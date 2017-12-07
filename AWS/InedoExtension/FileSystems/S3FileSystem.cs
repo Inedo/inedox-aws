@@ -18,7 +18,7 @@ namespace Inedo.ProGet.Extensions.Amazon.PackageStores
     [Description("Stores packages and assets in an Amazon S3 bucket.")]
     [PersistFrom("Inedo.ProGet.Extensions.PackageStores.S3.S3PackageStore,ProGetCoreEx")]
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3PackageStore,Amazon")]
-    public sealed class S3FileSystem : FileSystem
+    public sealed class S3FileSystem : FileSystem, IExternalFileSystem
     {
         // http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html, sections "Characters That Might Require Special Handling" and "Characters to Avoid"
         private static readonly LazyRegex UncleanPattern = new LazyRegex(@"[&$\x00-\x1f\x7f@=;:+ ,?\\{^}%`\]""'>\[~<#|!]");
@@ -62,6 +62,19 @@ namespace Inedo.ProGet.Extensions.Amazon.PackageStores
         private ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
         private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");
 
+        public async Task<string> GetExternalDownloadUrlAsync(string fileName)
+        {
+            var client = await this.client.ValueAsync.ConfigureAwait(false);
+            var key = this.BuildPath(fileName);
+
+            return client.GetPreSignedURL(new GetPreSignedUrlRequest
+            {
+                BucketName = this.BucketName,
+                Key = key,
+                Verb = HttpVerb.GET,
+                Expires = DateTime.UtcNow + TimeSpan.FromHours(6)
+            });
+        }
         public override async Task<Stream> OpenFileAsync(string fileName, FileMode mode, FileAccess access, FileShare share, bool requireRandomAccess)
         {
             var client = await this.client.ValueAsync.ConfigureAwait(false);

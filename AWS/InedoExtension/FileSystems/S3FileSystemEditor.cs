@@ -5,7 +5,7 @@ using Inedo.Web.Editors;
 
 namespace Inedo.ProGet.Extensions.Amazon.PackageStores
 {
-    internal sealed class S3PackageStoreEditor : FileSystemEditor
+    internal sealed class S3FileSystemEditor : FileSystemEditor
     {
         private ValidatingTextBox txtAccessKey = new ValidatingTextBox { Required = true };
         private PasswordTextBox txtSecretKey = new PasswordTextBox { Required = true };

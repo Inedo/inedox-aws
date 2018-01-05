@@ -11,6 +11,7 @@ using Amazon.S3.Model;
 using Inedo.Extensibility.FileSystems;
 using Inedo.IO;
 using Inedo.Serialization;
+using Inedo.Web;
 
 namespace Inedo.ProGet.Extensions.Amazon.PackageStores
 {
@@ -18,6 +19,7 @@ namespace Inedo.ProGet.Extensions.Amazon.PackageStores
     [Description("Stores packages and assets in an Amazon S3 bucket.")]
     [PersistFrom("Inedo.ProGet.Extensions.PackageStores.S3.S3PackageStore,ProGetCoreEx")]
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3PackageStore,Amazon")]
+    [CustomEditor(typeof(S3FileSystemEditor))]
     public sealed class S3FileSystem : FileSystem
     {
         // http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html, sections "Characters That Might Require Special Handling" and "Characters to Avoid"
@@ -102,8 +104,8 @@ namespace Inedo.ProGet.Extensions.Amazon.PackageStores
                     seekToEnd = false;
                     break;
                 case FileMode.Open:
-                    wantExisting = false;
-                    loadExisting = false;
+                    wantExisting = true;
+                    loadExisting = true;
                     seekToEnd = false;
                     break;
                 case FileMode.OpenOrCreate:

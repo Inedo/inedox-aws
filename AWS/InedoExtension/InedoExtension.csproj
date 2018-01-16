@@ -66,8 +66,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Credentials\AwsCredentials.cs" />
     <Compile Include="FileSystems\S3FileSystem.cs" />
     <Compile Include="FileSystems\S3FileSystemEditor.cs" />
+    <Compile Include="RegionEndpointSuggestionProvider.cs" />
+    <Compile Include="Operations\UploadFilesToS3Operation.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

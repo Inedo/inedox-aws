@@ -1,12 +1,13 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
+using Inedo.Extensibility;
 
 [assembly: AssemblyTitle("Amazon AWS")]
-[assembly: AssemblyDescription("Contains a ProGet Package Store backed by Amazon S3.")]
+[assembly: AssemblyDescription("Contains a ProGet Package Store backed by Amazon S3, and operations for working with S3 storage in Otter and Hedgehog.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Inedo, LLC")]
-[assembly: AssemblyProduct("ProGet")]
-[assembly: AssemblyCopyright("Copyright © 2017")]
+[assembly: AssemblyProduct("any")]
+[assembly: AssemblyCopyright("Copyright © 2018")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -14,3 +15,5 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
+
+[assembly: ScriptNamespace("AWS")]

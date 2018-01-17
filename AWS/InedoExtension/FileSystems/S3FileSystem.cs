@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Inedo.Extensibility.FileSystems;
@@ -13,12 +14,14 @@ using Inedo.IO;
 using Inedo.Serialization;
 using Inedo.Web;
 
-namespace Inedo.ProGet.Extensions.Amazon.PackageStores
+namespace Inedo.ProGet.Extensions.AWS.PackageStores
 {
     [DisplayName("Amazon S3")]
     [Description("Stores packages and assets in an Amazon S3 bucket.")]
     [PersistFrom("Inedo.ProGet.Extensions.PackageStores.S3.S3PackageStore,ProGetCoreEx")]
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3PackageStore,Amazon")]
+    [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3FileSystem,Amazon")]
+    [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3FileSystem,AWS")]
     [CustomEditor(typeof(S3FileSystemEditor))]
     public sealed class S3FileSystem : FileSystem
     {
@@ -34,6 +37,9 @@ namespace Inedo.ProGet.Extensions.Amazon.PackageStores
         {
             this.client = new LazyDisposableAsync<AmazonS3Client>(this.CreateClient, this.CreateClientAsync);
         }
+
+        [Persistent]
+        public string InstanceRole { get; set; }
 
         [Persistent]
         public string AccessKey { get; set; }
@@ -378,7 +384,16 @@ namespace Inedo.ProGet.Extensions.Amazon.PackageStores
             base.Dispose(disposing);
         }
 
-        private AmazonS3Client CreateClient() => new AmazonS3Client(this.AccessKey, this.SecretAccessKey, global::Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint));
+        private AWSCredentials CreateCredentials()
+        {
+            if (string.IsNullOrEmpty(this.InstanceRole))
+            {
+                return new BasicAWSCredentials(this.AccessKey, this.SecretAccessKey);
+            }
+
+            return new InstanceProfileAWSCredentials(this.InstanceRole);
+        }
+        private AmazonS3Client CreateClient() => new AmazonS3Client(this.CreateCredentials(), Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint));
         private Task<AmazonS3Client> CreateClientAsync() => Task.Run(() => this.CreateClient());
         private string BuildPath(string path)
         {

@@ -65,6 +65,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Persistent]
         public string RegionEndpoint { get; set; }
 
+        [Persistent]
+        public string CustomServiceUrl { get; set; }
+
         private S3CannedACL CannedACL => this.MakePublic ? S3CannedACL.PublicRead : S3CannedACL.AuthenticatedRead;
         private S3StorageClass StorageClass => this.ReducedRedundancy ? S3StorageClass.ReducedRedundancy : S3StorageClass.Standard;
         private ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
@@ -393,7 +396,17 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
             return new InstanceProfileAWSCredentials(this.InstanceRole);
         }
-        private AmazonS3Client CreateClient() => new AmazonS3Client(this.CreateCredentials(), Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint));
+        private AmazonS3Config CreateS3Config()
+        {
+            // https://docs.aws.amazon.com/sdk-for-net/v3/developer-guide/net-dg-region-selection.html
+            // example service URL is: https://ec2.us-west-new.amazonaws.com
+
+            if (!string.IsNullOrEmpty(this.CustomServiceUrl))
+                return new AmazonS3Config { ServiceURL = this.CustomServiceUrl };
+            else
+                return new AmazonS3Config { RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint) };
+        }
+        private AmazonS3Client CreateClient() => new AmazonS3Client(this.CreateCredentials(), this.CreateS3Config());
         private Task<AmazonS3Client> CreateClientAsync() => Task.Run(() => this.CreateClient());
         private string BuildPath(string path)
         {

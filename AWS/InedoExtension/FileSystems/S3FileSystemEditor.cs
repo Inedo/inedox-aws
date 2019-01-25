@@ -20,9 +20,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         private SimpleCheckBox chkEncrypted = new SimpleCheckBox { Text = "Use server-side encryption" };
         private ValidatingTextBox txtEndpoint = new ValidatingTextBox
         {
-            Required = true,
             AutoCompleteValues = RegionEndpoint.EnumerableAllRegions.Select(r => r.SystemName)
         };
+        private ValidatingTextBox txtServiceUrl = new ValidatingTextBox { DefaultText = "Automatic from region endpoint" };
 
         protected override ISimpleControl CreateEditorControl()
         {
@@ -39,6 +39,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 this.txtInstanceRole.ServerValidateIfNullOrEmpty = true;
                 this.txtAccessKey.ServerValidateIfNullOrEmpty = true;
                 this.txtSecretKey.ServerValidateIfNullOrEmpty = true;
+                this.txtEndpoint.ServerValidate += ValidateEndpoint;
+                this.txtServiceUrl.ServerValidate += ValidateEndpoint;
             }
             catch (AmazonServiceException)
             {
@@ -53,6 +55,11 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 new SlimFormField("Bucket:", this.txtBucket),
                 new SlimFormField("Prefix:", this.txtPrefix),
                 new SlimFormField("Region endpoint:", this.txtEndpoint),
+                new SlimFormField("Custom service URL:", this.txtServiceUrl)
+                {
+                    HelpText = new LiteralHtml("Specifying a custom service URL will override the region endpoint. Valid endpoints are documented here: "
+                    + "<a href=\"https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region\" target=\"_blank\">https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region</a>")
+                },
                 new SlimFormField(
                     "Storage:",
                     new Div(this.chkReducedRedundancy),
@@ -73,6 +80,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             this.chkPublic.Checked = s3.MakePublic;
             this.chkEncrypted.Checked = s3.Encrypted;
             this.txtEndpoint.Text = s3.RegionEndpoint;
+            this.txtServiceUrl.Text = s3.CustomServiceUrl;
         }
         public override void WriteToInstance(object instance)
         {
@@ -86,6 +94,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             s3.MakePublic = this.chkPublic.Checked;
             s3.Encrypted = this.chkEncrypted.Checked;
             s3.RegionEndpoint = this.txtEndpoint.Text;
+            s3.CustomServiceUrl = this.txtServiceUrl.Text;
         }
 
         private void ValidateHasCredentials(object source, ServerValidateEventArgs args)
@@ -106,6 +115,26 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
             args.IsValid = false;
             this.txtInstanceRole.ValidatorText = "Either instance role or access key and secret key must be set.";
+        }
+
+        private void ValidateEndpoint(object source, ServerValidateEventArgs args)
+        {
+            if (!string.IsNullOrEmpty(this.txtServiceUrl.Text))
+            {
+                args.IsValid = true;
+                this.txtServiceUrl.ValidatorText = null;
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(this.txtEndpoint.Text))
+            {
+                args.IsValid = true;
+                this.txtEndpoint.ValidatorText = null;
+                return;
+            }
+
+            args.IsValid = false;
+            this.txtServiceUrl.ValidatorText = "Either region endpoint or service URL must be set.";
         }
     }
 }

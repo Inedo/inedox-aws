@@ -44,7 +44,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Persistent]
         public string AccessKey { get; set; }
 
-        [Persistent]
+        [Persistent(Encrypted = true)]
         public string SecretAccessKey { get; set; }
 
         [Persistent]
@@ -68,7 +68,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Persistent]
         public string CustomServiceUrl { get; set; }
 
-        private S3CannedACL CannedACL => this.MakePublic ? S3CannedACL.PublicRead : S3CannedACL.AuthenticatedRead;
+        private S3CannedACL CannedACL => this.MakePublic ? S3CannedACL.PublicRead : S3CannedACL.NoACL;
         private S3StorageClass StorageClass => this.ReducedRedundancy ? S3StorageClass.ReducedRedundancy : S3StorageClass.Standard;
         private ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
         private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");

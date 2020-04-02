@@ -17,3 +17,4 @@ using Inedo.Extensibility;
 [assembly: AssemblyFileVersion("1.0.2")]
 
 [assembly: ScriptNamespace("AWS")]
+[assembly: AppliesToAttribute (InedoProduct.BuildMaster | InedoProduct.Otter | InedoProduct.ProGet)]

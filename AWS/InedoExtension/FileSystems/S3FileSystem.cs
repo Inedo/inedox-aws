@@ -528,7 +528,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     {
                         if (this.CanWrite)
                         {
-                            this.FinishUploadAsync().WaitAndUnwrapExceptions();
+                            this.FinishUploadAsync().GetAwaiter().GetResult();
                         }
                     }
                 }

@@ -75,8 +75,10 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
         public override async Task<Stream> OpenFileAsync(string fileName, FileMode mode, FileAccess access, FileShare share, bool requireRandomAccess)
         {
+            if (string.IsNullOrEmpty(fileName))
+                throw new ArgumentNullException(nameof(fileName));
             var client = await this.client.ValueAsync.ConfigureAwait(false);
-            var key = this.BuildPath(fileName);
+            var key = this.BuildPath(fileName.ToLower());
 
             if (mode == FileMode.Open && access == FileAccess.Read && !requireRandomAccess)
             {
@@ -93,7 +95,20 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 }
                 catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
                 {
-                    throw new FileNotFoundException("File not found: " + fileName, fileName, ex);
+                    try
+                    {
+                        // previous versions of extensions created mixed case files
+                        var response = await client.GetObjectAsync(new GetObjectRequest
+                        {
+                            BucketName = this.BucketName,
+                            Key = this.BuildPath(fileName)
+                        }).ConfigureAwait(false);
+                    }
+                    catch (AmazonS3Exception) when (ex.StatusCode == HttpStatusCode.NotFound)
+                    {
+
+                        throw new FileNotFoundException("File not found: " + fileName, fileName, ex);
+                    }
                 }
             }
 

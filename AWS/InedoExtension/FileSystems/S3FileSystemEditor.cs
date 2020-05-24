@@ -1,5 +1,6 @@
 ﻿using Amazon;
 using Amazon.Runtime;
+using Inedo.Web;
 using Inedo.Web.Controls;
 using Inedo.Web.Controls.SimpleHtml;
 using Inedo.Web.Editors;
@@ -10,19 +11,19 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 {
     internal sealed class S3FileSystemEditor : FileSystemEditor
     {
-        private ValidatingTextBox txtInstanceRole = new ValidatingTextBox();
-        private ValidatingTextBox txtAccessKey = new ValidatingTextBox { Required = true };
-        private PasswordTextBox txtSecretKey = new PasswordTextBox { Required = true };
-        private ValidatingTextBox txtBucket = new ValidatingTextBox { Required = true };
-        private ValidatingTextBox txtPrefix = new ValidatingTextBox { DefaultText = "none (use bucket root)" };
-        private SimpleCheckBox chkReducedRedundancy = new SimpleCheckBox { Text = "Use reduced redundancy" };
-        private SimpleCheckBox chkPublic = new SimpleCheckBox { Text = "Make public" };
-        private SimpleCheckBox chkEncrypted = new SimpleCheckBox { Text = "Use server-side encryption" };
-        private ValidatingTextBox txtEndpoint = new ValidatingTextBox
+        private AhTextInput txtInstanceRole = new AhTextInput();
+        private AhTextInput txtAccessKey = new AhTextInput { Required = true };
+        private AhPasswordInput txtSecretKey = new AhPasswordInput { Required = true };
+        private AhTextInput txtBucket = new AhTextInput { Required = true };
+        private AhTextInput txtPrefix = new AhTextInput { Placeholder = "none (use bucket root)" };
+        private AhCheckboxInput chkReducedRedundancy = new AhCheckboxInput { LabelText = "Use reduced redundancy" };
+        private AhCheckboxInput chkPublic = new AhCheckboxInput { LabelText = "Make public" };
+        private AhCheckboxInput chkEncrypted = new AhCheckboxInput { LabelText = "Use server-side encryption" };
+        private AhTextInput txtEndpoint = new AhTextInput
         {
             AutoCompleteValues = RegionEndpoint.EnumerableAllRegions.Select(r => r.SystemName)
         };
-        private ValidatingTextBox txtServiceUrl = new ValidatingTextBox { DefaultText = "Automatic from region endpoint" };
+        private AhTextInput txtServiceUrl = new AhTextInput { Placeholder = "Automatic from region endpoint" };
 
         protected override ISimpleControl CreateEditorControl()
         {
@@ -33,21 +34,21 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 this.txtInstanceRole.AutoCompleteValues = roles;
                 this.txtAccessKey.Required = false;
                 this.txtSecretKey.Required = false;
-                this.txtInstanceRole.ServerValidate += ValidateHasCredentials;
-                this.txtAccessKey.ServerValidate += ValidateHasCredentials;
-                this.txtSecretKey.ServerValidate += ValidateHasCredentials;
+                this.txtInstanceRole.ServerValidate = ValidateHasCredentials;
+                this.txtAccessKey.ServerValidate = ValidateHasCredentials;
+                this.txtSecretKey.ServerValidate = ValidateHasCredentials;
                 this.txtInstanceRole.ServerValidateIfNullOrEmpty = true;
                 this.txtAccessKey.ServerValidateIfNullOrEmpty = true;
                 this.txtSecretKey.ServerValidateIfNullOrEmpty = true;
-                this.txtEndpoint.ServerValidate += ValidateEndpoint;
-                this.txtServiceUrl.ServerValidate += ValidateEndpoint;
+                this.txtEndpoint.ServerValidate = ValidateEndpoint;
+                this.txtServiceUrl.ServerValidate = ValidateEndpoint;
             }
             catch (AmazonServiceException)
             {
                 roles = null;
             }
 
-            return new SimpleVirtualCompositeControl(
+            return new SimplePageControl(
                 new SlimFormField("Instance role:", this.txtInstanceRole,
                     new P("This overrides the access key and secret key. Only available on EC2 instances.")) { Visible = roles != null },
                 new SlimFormField("Access key:", this.txtAccessKey),
@@ -71,70 +72,52 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         public override void BindToInstance(object instance)
         {
             var s3 = (S3FileSystem)instance;
-            this.txtInstanceRole.Text = s3.InstanceRole;
-            this.txtAccessKey.Text = s3.AccessKey;
-            this.txtSecretKey.Text = s3.SecretAccessKey;
-            this.txtBucket.Text = s3.BucketName;
-            this.txtPrefix.Text = s3.TargetPath;
+            this.txtInstanceRole.Value = s3.InstanceRole;
+            this.txtAccessKey.Value = s3.AccessKey;
+            this.txtSecretKey.PasswordValue = s3.SecretAccessKey;
+            this.txtBucket.Value = s3.BucketName;
+            this.txtPrefix.Value = s3.TargetPath;
             this.chkReducedRedundancy.Checked = s3.ReducedRedundancy;
             this.chkPublic.Checked = s3.MakePublic;
             this.chkEncrypted.Checked = s3.Encrypted;
-            this.txtEndpoint.Text = s3.RegionEndpoint;
-            this.txtServiceUrl.Text = s3.CustomServiceUrl;
+            this.txtEndpoint.Value = s3.RegionEndpoint;
+            this.txtServiceUrl.Value = s3.CustomServiceUrl;
         }
         public override void WriteToInstance(object instance)
         {
             var s3 = (S3FileSystem)instance;
-            s3.InstanceRole = AH.NullIf(this.txtInstanceRole.Text, string.Empty);
-            s3.AccessKey = this.txtAccessKey.Text;
-            s3.SecretAccessKey = this.txtSecretKey.Text;
-            s3.BucketName = this.txtBucket.Text;
-            s3.TargetPath = this.txtPrefix.Text;
+            s3.InstanceRole = AH.NullIf(this.txtInstanceRole.Value, string.Empty);
+            s3.AccessKey = this.txtAccessKey.Value;
+            s3.SecretAccessKey = this.txtSecretKey.PasswordValue;
+            s3.BucketName = this.txtBucket.Value;
+            s3.TargetPath = this.txtPrefix.Value;
             s3.ReducedRedundancy = this.chkReducedRedundancy.Checked;
             s3.MakePublic = this.chkPublic.Checked;
             s3.Encrypted = this.chkEncrypted.Checked;
-            s3.RegionEndpoint = this.txtEndpoint.Text;
-            s3.CustomServiceUrl = this.txtServiceUrl.Text;
+            s3.RegionEndpoint = this.txtEndpoint.Value;
+            s3.CustomServiceUrl = this.txtServiceUrl.Value;
         }
 
-        private void ValidateHasCredentials(object source, ServerValidateEventArgs args)
+        private ValidationResults ValidateHasCredentials(string value)
         {
-            if (!string.IsNullOrEmpty(this.txtInstanceRole.Text))
-            {
-                args.IsValid = true;
-                this.txtInstanceRole.ValidatorText = null;
-                return;
-            }
+            if (!string.IsNullOrEmpty(this.txtInstanceRole.Value))
+                return true;
 
-            if (!string.IsNullOrEmpty(this.txtAccessKey.Text) && !string.IsNullOrEmpty(this.txtSecretKey.Text))
-            {
-                args.IsValid = true;
-                this.txtInstanceRole.ValidatorText = null;
-                return;
-            }
+            if (!string.IsNullOrEmpty(this.txtAccessKey.Value) && !string.IsNullOrEmpty(this.txtSecretKey.PasswordValue))
+                return true;
 
-            args.IsValid = false;
-            this.txtInstanceRole.ValidatorText = "Either instance role or access key and secret key must be set.";
+            return new ValidationResults(false, "Either instance role or access key and secret key must be set.");
         }
 
-        private void ValidateEndpoint(object source, ServerValidateEventArgs args)
+        private ValidationResults ValidateEndpoint(string value)
         {
-            if (!string.IsNullOrEmpty(this.txtServiceUrl.Text))
-            {
-                args.IsValid = true;
-                this.txtServiceUrl.ValidatorText = null;
-                return;
-            }
+            if (!string.IsNullOrEmpty(this.txtServiceUrl.Value))
+                return true;
 
-            if (!string.IsNullOrEmpty(this.txtEndpoint.Text))
-            {
-                args.IsValid = true;
-                this.txtEndpoint.ValidatorText = null;
-                return;
-            }
+            if (!string.IsNullOrEmpty(this.txtEndpoint.Value))
+                return true;
 
-            args.IsValid = false;
-            this.txtServiceUrl.ValidatorText = "Either region endpoint or service URL must be set.";
+            return new ValidationResults(false, "Either region endpoint or service URL must be set.");
         }
     }
 }

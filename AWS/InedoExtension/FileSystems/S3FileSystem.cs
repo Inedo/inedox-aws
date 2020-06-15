@@ -104,10 +104,10 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                             Key = this.BuildPath(fileName)
                         }).ConfigureAwait(false);
                     }
-                    catch (AmazonS3Exception) when (ex.StatusCode == HttpStatusCode.NotFound)
+                    catch (AmazonS3Exception iex) when (iex.StatusCode == HttpStatusCode.NotFound)
                     {
 
-                        throw new FileNotFoundException("File not found: " + fileName, fileName, ex);
+                        throw new FileNotFoundException("File not found: " + fileName, fileName, iex);
                     }
                 }
             }

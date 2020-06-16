@@ -85,6 +85,6 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>powershell -Command "if (Test-Path C:\Projects\ProGet\Extensions -PathType Container) { Compress-Archive -Path '$(TargetDir)*' -DestinationPath C:\Projects\ProGet\Extensions\$(TargetName).zip -Force; Move-Item C:\Projects\ProGet\Extensions\$(TargetName).zip -Destination C:\Projects\ProGet\Extensions\$(TargetName).inedox -Force; if (Test-Path C:\Projects\ProGet\Extensions\$(TargetName).upack) { Remove-Item C:\Projects\ProGet\Extensions\$(TargetName).upack } }"</PostBuildEvent>
+    <PostBuildEvent>powershell -Command "if ((Test-Path C:\LocalDev\Tools\inedoxpack\inedoxpack.exe) -And (Test-Path C:\LocalDev\ProGet\Extensions -PathType Container)) { C:\LocalDev\Tools\inedoxpack\inedoxpack.exe '$(TargetPath)' 'C:\LocalDev\ProGet\Extensions\$(TargetName).upack' 0.0.0 }"</PostBuildEvent>
   </PropertyGroup>
 </Project>

@@ -103,6 +103,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                             BucketName = this.BucketName,
                             Key = this.BuildPath(fileName)
                         }).ConfigureAwait(false);
+                        key = this.BuildPath(fileName);
                     }
                     catch (AmazonS3Exception iex) when (iex.StatusCode == HttpStatusCode.NotFound)
                     {
@@ -239,6 +240,18 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 {
                     BucketName = this.BucketName,
                     Key = this.BuildPath(fileName)
+                }).ConfigureAwait(false);
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // The file does not exist, so the deletion technically succeeded.
+            }
+            try
+            {
+                await client.DeleteObjectAsync(new DeleteObjectRequest
+                {
+                    BucketName = this.BucketName,
+                    Key = this.BuildPath(fileName.ToLower())
                 }).ConfigureAwait(false);
             }
             catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)

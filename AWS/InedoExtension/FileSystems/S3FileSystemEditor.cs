@@ -1,11 +1,10 @@
-﻿using Amazon;
+﻿using System.Linq;
+using Amazon;
 using Amazon.Runtime;
 using Inedo.Web;
 using Inedo.Web.Controls;
 using Inedo.Web.Controls.SimpleHtml;
 using Inedo.Web.Editors;
-using System.Linq;
-using System.Web.UI.WebControls;
 
 namespace Inedo.ProGet.Extensions.AWS.PackageStores
 {

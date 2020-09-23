@@ -114,7 +114,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
             var client = await this.client.ValueAsync.ConfigureAwait(false);
-            var key = this.BuildPath(fileName.ToLower());
+            var key = this.BuildPath(fileName);
 
             if (mode == FileMode.Open && access == FileAccess.Read && !requireRandomAccess)
             {
@@ -133,17 +133,16 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 {
                     try
                     {
-                        // previous versions of extensions created mixed case files
+                        // for versions of ProGet before v5.3.11
                         var response = await client.GetObjectAsync(new GetObjectRequest
                         {
                             BucketName = this.BucketName,
-                            Key = this.BuildPath(fileName)
+                            Key = this.BuildPath(fileName.ToLowerInvariant())
                         }).ConfigureAwait(false);
                         key = this.BuildPath(fileName);
                     }
                     catch (AmazonS3Exception iex) when (iex.StatusCode == HttpStatusCode.NotFound)
                     {
-
                         throw new FileNotFoundException("File not found: " + fileName, fileName, iex);
                     }
                 }
@@ -380,7 +379,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         public override async Task<IEnumerable<FileSystemItem>> ListContentsAsync(string path)
         {
             var client = await this.client.ValueAsync.ConfigureAwait(false);
-            var prefix = string.IsNullOrEmpty(path) ? string.Empty : (this.BuildPath(path) + "/");
+            var prefix = this.BuildPath(path) + "/";
+            if (prefix == "/")
+                prefix = string.Empty;
 
             var contents = new List<S3FileSystemItem>();
             var seenDirectory = new HashSet<string>();
@@ -529,7 +530,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             // Collapse slashes.
             path = MultiSlashPattern.Replace(path.Trim('/'), "");
 
-            return this.Prefix + path;
+            return (this.Prefix + path)?.Trim('/');
         }
         private string OriginalPath(string path)
         {

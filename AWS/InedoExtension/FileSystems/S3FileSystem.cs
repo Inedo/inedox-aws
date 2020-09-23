@@ -127,7 +127,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         Key = key
                     }).ConfigureAwait(false);
 
-                    return response.ResponseStream;
+                    return new PositionStream(response.ResponseStream, response.ContentLength);
                 }
                 catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
                 {
@@ -139,7 +139,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                             BucketName = this.BucketName,
                             Key = this.BuildPath(fileName.ToLowerInvariant())
                         }).ConfigureAwait(false);
-                        key = this.BuildPath(fileName);
+
+                        return new PositionStream(response.ResponseStream, response.ContentLength);
                     }
                     catch (AmazonS3Exception iex) when (iex.StatusCode == HttpStatusCode.NotFound)
                     {

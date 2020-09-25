@@ -73,12 +73,48 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         private ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
         private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");
 
+        public override async Task<bool> FileExistsAsync(string fileName)
+        {
+            var path = fileName?.Trim('/');
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            var client = await this.client.ValueAsync.ConfigureAwait(false);
+
+            try
+            {
+                await client.GetObjectMetadataAsync(new GetObjectMetadataRequest
+                {
+                    BucketName = this.BucketName,
+                    Key = this.BuildPath(path)
+                }).ConfigureAwait(false);
+
+                return true;
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+        }
+        public override async Task<bool> DirectoryExistsAsync(string directoryName)
+        {
+            var path = directoryName?.Trim('/');
+
+            if (string.IsNullOrEmpty(path))
+                return true;
+
+            if (await this.GetDirectoryAsync(path).ConfigureAwait(false) != null)
+                return true;
+
+            return false;
+        }
+
         public override async Task<Stream> OpenFileAsync(string fileName, FileMode mode, FileAccess access, FileShare share, bool requireRandomAccess)
         {
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
             var client = await this.client.ValueAsync.ConfigureAwait(false);
-            var key = this.BuildPath(fileName.ToLower());
+            var key = this.BuildPath(fileName);
 
             if (mode == FileMode.Open && access == FileAccess.Read && !requireRandomAccess)
             {
@@ -91,23 +127,23 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         Key = key
                     }).ConfigureAwait(false);
 
-                    return response.ResponseStream;
+                    return new PositionStream(response.ResponseStream, response.ContentLength);
                 }
                 catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
                 {
                     try
                     {
-                        // previous versions of extensions created mixed case files
+                        // for versions of ProGet before v5.3.11
                         var response = await client.GetObjectAsync(new GetObjectRequest
                         {
                             BucketName = this.BucketName,
-                            Key = this.BuildPath(fileName)
+                            Key = this.BuildPath(fileName.ToLowerInvariant())
                         }).ConfigureAwait(false);
-                        key = this.BuildPath(fileName);
+
+                        return new PositionStream(response.ResponseStream, response.ContentLength);
                     }
                     catch (AmazonS3Exception iex) when (iex.StatusCode == HttpStatusCode.NotFound)
                     {
-
                         throw new FileNotFoundException("File not found: " + fileName, fileName, iex);
                     }
                 }
@@ -292,9 +328,25 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 StorageClass = this.StorageClass
             }).ConfigureAwait(false);
         }
-        public override Task CreateDirectoryAsync(string directoryName)
+        public override async Task CreateDirectoryAsync(string directoryName)
         {
-            return InedoLib.NullTask;
+            var path = directoryName?.Trim('/');
+
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            if (await this.DirectoryExistsAsync(path).ConfigureAwait(false))
+                return;
+
+            await this.CreateDirectoryInternalAsync(path).ConfigureAwait(false);
+
+            // create other dirs just for good measure
+            var parts = path.Split('/');
+            for (int i = 1; i < parts.Length; i++)
+            {
+                var dirPath = string.Join("/", parts.Take(i));
+                await this.CreateDirectoryAsync(dirPath).ConfigureAwait(false);
+            }
         }
         public override async Task DeleteDirectoryAsync(string directoryName, bool recursive)
         {
@@ -329,8 +381,10 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         {
             var client = await this.client.ValueAsync.ConfigureAwait(false);
             var prefix = this.BuildPath(path) + "/";
+            if (prefix == "/")
+                prefix = string.Empty;
 
-            var contents = new List<FileSystemItem>();
+            var contents = new List<S3FileSystemItem>();
             var seenDirectory = new HashSet<string>();
             string continuationToken = null;
 
@@ -346,6 +400,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
                 continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
 
+                if (response.CommonPrefixes != null)
+                    seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
+
                 foreach (var file in response.S3Objects)
                 {
                     var key = this.OriginalPath(file.Key.Substring(prefix.Length));
@@ -353,10 +410,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     if (slash != -1)
                     {
                         var dir = key.Substring(0, slash);
-                        if (seenDirectory.Add(dir))
-                        {
-                            contents.Add(new S3FileSystemItem(dir));
-                        }
+                        seenDirectory.Add(dir);
                     }
                     else
                     {
@@ -366,7 +420,14 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             }
             while (continuationToken != null);
 
-            return contents;
+            return seenDirectory.Select(d => new S3FileSystemItem(d)).Concat(contents);
+
+            static string parseCommonPrefix(string p)
+            {
+                var path = p.Trim('/');
+                int index = path.LastIndexOf('/');
+                return index >= 0 ? path.Substring(index + 1) : path;
+            }
         }
         public override async Task<FileSystemItem> GetInfoAsync(string path)
         {
@@ -384,20 +445,46 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             }
             catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
-                var response = await client.ListObjectsV2Async(new ListObjectsV2Request
-                {
-                    BucketName = this.BucketName,
-                    Prefix = this.BuildPath(path) + "/",
-                    Delimiter = "/",
-                    MaxKeys = 1
-                }).ConfigureAwait(false);
+                return await this.GetDirectoryAsync(path).ConfigureAwait(false);
+            }
+        }
 
-                var item = response.S3Objects.FirstOrDefault();
-                if (item != null)
-                    return new S3FileSystemItem(PathEx.GetFileName(path), item.Size);
+        private async Task<S3FileSystemItem> GetDirectoryAsync(string path)
+        {
+            var client = await this.client.ValueAsync.ConfigureAwait(false);
 
+            try
+            {
+                var metadata = await client.GetObjectMetadataAsync(
+                    new GetObjectMetadataRequest
+                    {
+                        BucketName = this.BucketName,
+                        Key = this.BuildPath(path) + "/"
+                    }
+                ).ConfigureAwait(false);
+
+                return new S3FileSystemItem(PathEx.GetFileName(path));
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
                 return null;
             }
+        }
+
+        private async Task CreateDirectoryInternalAsync(string path)
+        {
+            var client = await this.client.ValueAsync.ConfigureAwait(false);
+            await client.PutObjectAsync(
+                new PutObjectRequest
+                {
+                    BucketName = this.BucketName,
+                    Key = this.BuildPath(path) + "/",
+                    InputStream = Stream.Null,
+                    CannedACL = this.CannedACL,
+                    StorageClass = this.StorageClass,
+                    ServerSideEncryptionMethod = this.EncryptionMethod
+                }
+            ).ConfigureAwait(false);
         }
 
         protected override void Dispose(bool disposing)
@@ -444,7 +531,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             // Collapse slashes.
             path = MultiSlashPattern.Replace(path.Trim('/'), "");
 
-            return this.Prefix + path;
+            return (this.Prefix + path)?.Trim('/');
         }
         private string OriginalPath(string path)
         {

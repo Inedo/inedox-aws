@@ -200,19 +200,17 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         Key = key
                     }).ConfigureAwait(false);
 
-                    using (var responseStream = response.ResponseStream)
+                    using var responseStream = response.ResponseStream;
+                    stream = TemporaryStream.Create(response.ContentLength);
+                    try
                     {
-                        stream = TemporaryStream.Create(response.ContentLength);
-                        try
-                        {
-                            await responseStream.CopyToAsync(stream).ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            try { stream.Dispose(); } catch { }
-                            stream = null;
-                            throw;
-                        }
+                        await responseStream.CopyToAsync(stream).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        try { stream.Dispose(); } catch { }
+                        stream = null;
+                        throw;
                     }
                 }
                 catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)

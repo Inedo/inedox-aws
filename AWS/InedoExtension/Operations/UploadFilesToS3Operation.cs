@@ -24,7 +24,7 @@ namespace Inedo.Extensions.AWS.Operations
     [Description("Transfers files to an Amazon S3 bucket.")]
     [ScriptNamespace("AWS")]
     [Tag("amazon"), Tag("cloud")]
-    public sealed class UploadFilesToS3Operation : ExecuteOperation, IHasCredentials<AwsCredentials>
+    public sealed class UploadFilesToS3Operation : ExecuteOperation
     {
         private long totalUploadBytes;
         private long uploadedBytes;
@@ -65,16 +65,15 @@ namespace Inedo.Extensions.AWS.Operations
 
         [ScriptAlias("Credentials")]
         [DisplayName("Credentials")]
+        [SuggestableValue(typeof(SecureCredentialsSuggestionProvider<AwsSecureCredentials>))]
         public string CredentialName { get; set; }
         [ScriptAlias("AccessKey")]
         [DisplayName("Access key")]
         [PlaceholderText("Use credentials")]
-        [MappedCredential(nameof(AwsCredentials.AccessKeyId))]
         public string AccessKey { get; set; }
         [ScriptAlias("SecretAccessKey")]
         [DisplayName("Secret access key")]
         [PlaceholderText("Use credentials")]
-        [MappedCredential(nameof(AwsCredentials.SecretAccessKey))]
         public string SecretAccessKey { get; set; }
 
         [Category("Network")]
@@ -95,6 +94,7 @@ namespace Inedo.Extensions.AWS.Operations
 
         public override async Task ExecuteAsync(IOperationExecutionContext context)
         {
+            var credentials = this.GetCredentials(context as ICredentialResolutionContext);
             var fileOps = await context.Agent.GetServiceAsync<IFileOperationsExecuter>();
             var sourceDirectory = context.ResolvePath(this.SourceDirectory);
             if (!await fileOps.DirectoryExistsAsync(sourceDirectory))
@@ -119,20 +119,16 @@ namespace Inedo.Extensions.AWS.Operations
 
             Interlocked.Exchange(ref this.totalUploadBytes, files.Sum(f => f.Size));
 
-            using (var s3 = this.CreateClient())
+            using var s3 = this.CreateClient(credentials);
+            foreach (var file in files)
             {
-                foreach (var file in files)
-                {
-                    var keyName = prefix + file.FullName.Substring(sourceDirectory.Length).Replace(Path.DirectorySeparatorChar, '/').Trim('/');
-                    this.LogInformation($"Transferring {file.FullName} to {keyName} ({AH.FormatSize(file.Size)})...");
-                    using (var fileStream = await fileOps.OpenFileAsync(file.FullName, FileMode.Open, FileAccess.Read))
-                    {
-                        if (file.Size < this.PartSize * 2)
-                            await this.UploadSmallFileAsync(s3, fileStream, keyName, context);
-                        else
-                            await this.MultipartUploadAsync(s3, fileStream, keyName, context);
-                    }
-                }
+                var keyName = prefix + file.FullName.Substring(sourceDirectory.Length).Replace(Path.DirectorySeparatorChar, '/').Trim('/');
+                this.LogInformation($"Transferring {file.FullName} to {keyName} ({AH.FormatSize(file.Size)})...");
+                using var fileStream = await fileOps.OpenFileAsync(file.FullName, FileMode.Open, FileAccess.Read);
+                if (file.Size < this.PartSize * 2)
+                    await this.UploadSmallFileAsync(s3, fileStream, keyName, context);
+                else
+                    await this.MultipartUploadAsync(s3, fileStream, keyName, context);
             }
         }
 
@@ -165,6 +161,32 @@ namespace Inedo.Extensions.AWS.Operations
                     new Hilite(config[nameof(this.BucketName)] + AH.ConcatNE("/", config[nameof(this.KeyPrefix)]))
                 )
             );
+        }
+
+        private AwsSecureCredentials GetCredentials(ICredentialResolutionContext context)
+        {
+            AwsSecureCredentials credentials;
+            if (string.IsNullOrEmpty(this.CredentialName))
+            {
+                credentials = this.AccessKey == null ? null : new AwsSecureCredentials();
+            }
+            else
+            {
+                credentials = SecureCredentials.TryCreate(this.CredentialName, context) as AwsSecureCredentials;
+                if (credentials == null)
+                {
+                    var rc = SecureCredentials.TryCreate(this.CredentialName, context) as AwsCredentials;
+                    credentials = rc?.ToSecureCredentials() as AwsSecureCredentials;
+                }
+            }
+
+            if (credentials != null)
+            {
+                credentials.AccessKeyId = AH.CoalesceString(this.AccessKey, credentials.AccessKeyId);
+                credentials.SecretAccessKey = !string.IsNullOrWhiteSpace(this.SecretAccessKey) ? AH.CreateSecureString(this.SecretAccessKey) : credentials.SecretAccessKey;
+            }
+
+            return credentials;
         }
 
         private Task UploadSmallFileAsync(AmazonS3Client s3, Stream stream, string key, IOperationExecutionContext context)
@@ -265,11 +287,11 @@ namespace Inedo.Extensions.AWS.Operations
 
             return parts;
         }
-        private AmazonS3Client CreateClient()
+        private AmazonS3Client CreateClient(AwsSecureCredentials credentials)
         {
             return string.IsNullOrWhiteSpace(this.RegionEndpoint)
-                ? new AmazonS3Client(this.AccessKey, this.SecretAccessKey)
-                : new AmazonS3Client(this.AccessKey, this.SecretAccessKey, Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint));
+                ? new AmazonS3Client(credentials.AccessKeyId, AH.Unprotect(credentials.SecretAccessKey))
+                : new AmazonS3Client(credentials.AccessKeyId, AH.Unprotect(credentials.SecretAccessKey), Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint));
         }
 
         private readonly struct PartInfo

@@ -12,7 +12,8 @@ namespace Inedo.Extensions.AWS.Credentials
     [DisplayName("(Legacy) AWS")]
     [Description("Credentials that represent an access key ID and secret key.")]
     [PersistFrom("Inedo.BuildMasterExtensions.Amazon.Credentials.AwsCredentials,Amazon")]
-    public sealed class AwsCredentials : ResourceCredentials
+    [PersistFrom("Inedo.Extensions.AWS.Credentials.AwsCredentials,Amazon")]
+    public sealed class AwsLegacyCredentials : ResourceCredentials
     {
         [Persistent]
         [DisplayName("Access key")]

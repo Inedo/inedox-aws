@@ -175,7 +175,7 @@ namespace Inedo.Extensions.AWS.Operations
                 credentials = SecureCredentials.TryCreate(this.CredentialName, context) as AwsSecureCredentials;
                 if (credentials == null)
                 {
-                    var rc = SecureCredentials.TryCreate(this.CredentialName, context) as AwsCredentials;
+                    var rc = SecureCredentials.TryCreate(this.CredentialName, context) as AwsLegacyCredentials;
                     credentials = rc?.ToSecureCredentials() as AwsSecureCredentials;
                 }
             }

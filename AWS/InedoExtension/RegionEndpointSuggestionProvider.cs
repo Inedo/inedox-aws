@@ -9,15 +9,6 @@ namespace Inedo.Extensions.AWS
 {
     internal sealed class RegionEndpointSuggestionProvider : ISuggestionProvider
     {
-        public Task<IEnumerable<string>> GetSuggestionsAsync(IComponentConfiguration config)
-        {
-            return Task.FromResult(getRegions());
-
-            IEnumerable<string> getRegions()
-            {
-                return RegionEndpoint.EnumerableAllRegions
-                    .Select(r => r.SystemName);
-            }
-        }
+        public Task<IEnumerable<string>> GetSuggestionsAsync(IComponentConfiguration config) => Task.FromResult(RegionEndpoint.EnumerableAllRegions.Select(r => r.SystemName));
     }
 }

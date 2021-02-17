@@ -351,21 +351,22 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     StorageClass = this.StorageClass,
                     CannedACL = this.CannedACL,
                     ServerSideEncryptionMethod = this.EncryptionMethod
-                }
+                },
+                cancellationToken
             ).ConfigureAwait(false);
 
             return new S3ResumableUploadStream(this, client, key, response.UploadId);
         }
-        public override Task<UploadStream> ContinueResumableUploadAsync(string fileName, byte[] context, CancellationToken cancellationToken = default)
+        public override Task<UploadStream> ContinueResumableUploadAsync(string fileName, byte[] state, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
             var client = this.client.Value;
             var key = this.BuildPath(fileName);
-            return Task.FromResult<UploadStream>(new S3ResumableUploadStream(this, client, key, context));
+            return Task.FromResult<UploadStream>(new S3ResumableUploadStream(this, client, key, state));
         }
-        public override async Task CompleteResumableUploadAsync(string fileName, byte[] context, CancellationToken cancellationToken = default)
+        public override async Task CompleteResumableUploadAsync(string fileName, byte[] state, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
@@ -373,10 +374,10 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var client = this.client.Value;
             var key = this.BuildPath(fileName);
 
-            using var stream = new S3ResumableUploadStream(this, client, key, context);
+            using var stream = new S3ResumableUploadStream(this, client, key, state);
             await stream.CompleteAsync(cancellationToken).ConfigureAwait(false);
         }
-        public override async Task CancelResumableUploadAsync(string fileName, byte[] context, CancellationToken cancellationToken = default)
+        public override async Task CancelResumableUploadAsync(string fileName, byte[] state, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
@@ -384,7 +385,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var client = this.client.Value;
             var key = this.BuildPath(fileName);
 
-            using var stream = new S3ResumableUploadStream(this, client, key, context);
+            using var stream = new S3ResumableUploadStream(this, client, key, state);
             await stream.CancelAsync(cancellationToken).ConfigureAwait(false);
         }
 

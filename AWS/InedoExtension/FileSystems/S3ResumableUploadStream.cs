@@ -142,7 +142,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         PartSize = this.tempStream.Length,
                         IsLastPart = true,
                         InputStream = this.tempStream
-                    }
+                    },
+                    cancellationToken
                 ).ConfigureAwait(false);
 
                 this.parts.Add(new PartETag(this.parts.Count + 1, part.ETag));
@@ -154,7 +155,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         Key = this.key,
                         UploadId = this.uploadId,
                         PartETags = parts
-                    }
+                    },
+                    cancellationToken
                 ).ConfigureAwait(false);
             }
             catch

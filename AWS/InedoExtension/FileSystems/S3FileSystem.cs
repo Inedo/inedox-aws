@@ -389,6 +389,17 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             await stream.CancelAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        public override RichDescription GetDescription()
+        {
+            if (string.IsNullOrEmpty(this.BucketName))
+                return base.GetDescription();
+
+            return new RichDescription(
+                "Amazon S3: ",
+                new Hilite(this.BucketName + "://" + this.TargetPath?.TrimStart('/'))
+            );
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (!this.disposed)

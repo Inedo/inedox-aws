@@ -192,10 +192,10 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     stream.Position = 0;
                     int partNumber = this.partNumber++;
 
-                    if (this.uploadTask == null || this.uploadTask.IsCompleted)
+                    if (this.uploadTask == null)
                         this.uploadTask = Task.Run(() => this.UploadPartAsync(stream, partNumber));
                     else
-                        this.uploadTask = this.uploadTask.ContinueWith(_ => this.UploadPartAsync(stream, partNumber));
+                        this.uploadTask = this.uploadTask.ContinueWith(_ => this.UploadPartAsync(stream, partNumber)).Unwrap();
                 }
             }
         }

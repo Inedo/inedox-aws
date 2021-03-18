@@ -27,8 +27,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3FileSystem,AWS")]
     public sealed class S3FileSystem : FileSystem
     {
-        private static readonly LazyRegex CleanPattern = new LazyRegex(@"(![0-9A-F][0-9A-F])+", RegexOptions.Compiled);
-        private static readonly LazyRegex MultiSlashPattern = new LazyRegex(@"/{2,}", RegexOptions.Compiled);
+        private static readonly LazyRegex LegacyEscapingRegex = new(@"[&$\x00-\x1f\x7f@=;:+ ,?\\{^}%`\]""'>\[~<#|!]");
+        private static readonly LazyRegex CleanPattern = new("(![0-9A-F][0-9A-F])+", RegexOptions.Compiled);
+        private static readonly LazyRegex MultiSlashPattern = new("/{2,}", RegexOptions.Compiled);
 
         private readonly Lazy<AmazonS3Client> client;
         private bool disposed;
@@ -87,23 +88,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(path))
                 return false;
 
-            var client = this.client.Value;
-            try
-            {
-                await client.GetObjectMetadataAsync(
-                    new GetObjectMetadataRequest
-                    {
-                        BucketName = this.BucketName,
-                        Key = this.BuildPath(path)
-                    }
-                ).ConfigureAwait(false);
-
-                return true;
-            }
-            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                return false;
-            }
+            return (await this.GetObjectMetadataAsync(this.BuildPath(path)).ConfigureAwait(false)) is not null;
         }
         public override async Task<bool> DirectoryExistsAsync(string directoryName)
         {
@@ -123,35 +108,30 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            var client = this.client.Value;
-            var key = this.BuildPath(fileName);
-
-            try
-            {
-                var response = await client.GetObjectAsync(
-                    new GetObjectRequest
-                    {
-                        BucketName = this.BucketName,
-                        Key = key
-                    },
-                    cancellationToken
-                ).ConfigureAwait(false);
-
-                return new PositionStream(response.ResponseStream, response.ContentLength);
-            }
-            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                throw new FileNotFoundException("File not found: " + fileName, fileName, ex);
-            }
+            return (await this.GetObjectAsync(this.BuildPath(fileName)).ConfigureAwait(false))
+                ?? throw new FileNotFoundException("File not found: " + fileName, fileName);
         }
-        public override Task<Stream> CreateFileAsync(string fileName, FileAccessHints hints = FileAccessHints.Default, CancellationToken cancellationToken = default)
+        public override async Task<Stream> CreateFileAsync(string fileName, FileAccessHints hints = FileAccessHints.Default, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
             var client = this.client.Value;
             var key = this.BuildPath(fileName);
-            return Task.FromResult<Stream>(new S3WriteStream(this, client, key));
+
+            // if there was a legacy escaped path, delete it now since it should be logically overwritten by this
+            if (GetLegacyEscapedPath(key, out var escapedPath))
+            {
+                try
+                {
+                    await this.DeleteFileAsync(escapedPath).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+            }
+
+            return new S3WriteStream(this, client, key);
         }
 
         public override async Task DeleteFileAsync(string fileName)
@@ -298,7 +278,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     }
                     else
                     {
-                        contents.Add(new S3FileSystemItem(file));
+                        contents.Add(new S3FileSystemItem(file, key));
                     }
                 }
             }
@@ -315,24 +295,11 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
         public override async Task<FileSystemItem> GetInfoAsync(string path)
         {
-            var client = this.client.Value;
-
-            try
-            {
-                var metadata = await client.GetObjectMetadataAsync(
-                    new GetObjectMetadataRequest
-                    {
-                        BucketName = this.BucketName,
-                        Key = this.BuildPath(path)
-                    }
-                ).ConfigureAwait(false);
-
+            var metadata = await this.GetObjectMetadataAsync(this.BuildPath(path)).ConfigureAwait(false);
+            if (metadata is not null)
                 return new S3FileSystemItem(PathEx.GetFileName(path), metadata);
-            }
-            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                return await this.GetDirectoryAsync(path).ConfigureAwait(false);
-            }
+
+            return await this.GetDirectoryAsync(path).ConfigureAwait(false);
         }
 
         public override async Task<UploadStream> BeginResumableUploadAsync(string fileName, CancellationToken cancellationToken = default)
@@ -416,26 +383,89 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             base.Dispose(disposing);
         }
 
-        private async Task<S3FileSystemItem> GetDirectoryAsync(string path)
+        private async Task<GetObjectMetadataResponse> GetObjectMetadataAsync(string key)
         {
             var client = this.client.Value;
-
             try
             {
-                var metadata = await client.GetObjectMetadataAsync(
+                return await client.GetObjectMetadataAsync(
                     new GetObjectMetadataRequest
                     {
                         BucketName = this.BucketName,
-                        Key = this.BuildPath(path) + "/"
+                        Key = key
                     }
                 ).ConfigureAwait(false);
-
-                return new S3FileSystemItem(PathEx.GetFileName(path));
             }
             catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
+                // check for an item with a legacy escaped path
+                if (GetLegacyEscapedPath(key, out var escapedPath))
+                {
+                    try
+                    {
+                        return await client.GetObjectMetadataAsync(
+                            new GetObjectMetadataRequest
+                            {
+                                BucketName = this.BucketName,
+                                Key = escapedPath
+                            }
+                        ).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                    }
+                }
+
                 return null;
             }
+        }
+        private async Task<Stream> GetObjectAsync(string key)
+        {
+            var client = this.client.Value;
+            try
+            {
+                var response = await client.GetObjectAsync(
+                    new GetObjectRequest
+                    {
+                        BucketName = this.BucketName,
+                        Key = key
+                    }
+                ).ConfigureAwait(false);
+
+                return new PositionStream(response.ResponseStream, response.ContentLength);
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // check for an item with a legacy escaped path
+                if (GetLegacyEscapedPath(key, out var escapedPath))
+                {
+                    try
+                    {
+                        var response = await client.GetObjectAsync(
+                            new GetObjectRequest
+                            {
+                                BucketName = this.BucketName,
+                                Key = escapedPath
+                            }
+                        ).ConfigureAwait(false);
+
+                        return new PositionStream(response.ResponseStream, response.ContentLength);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                return null;
+            }
+        }
+        private async Task<S3FileSystemItem> GetDirectoryAsync(string path)
+        {
+            var metadata = await this.GetObjectMetadataAsync(this.BuildPath(path) + "/").ConfigureAwait(false);
+            if (metadata is not null)
+                return new S3FileSystemItem(PathEx.GetFileName(path));
+
+            return null;
         }
         private async Task CreateDirectoryInternalAsync(string path)
         {
@@ -469,7 +499,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             else
                 return new AmazonS3Config { RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint) };
         }
-        private AmazonS3Client CreateClient() => new AmazonS3Client(this.CreateCredentials(), this.CreateS3Config());
+        private AmazonS3Client CreateClient() => new(this.CreateCredentials(), this.CreateS3Config());
         private string BuildPath(string path)
         {
             path = MultiSlashPattern.Replace(path.Trim('/'), string.Empty);
@@ -484,6 +514,17 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 m => InedoLib.UTF8Encoding.GetString(m.Value.Split(new[] { '!' }, StringSplitOptions.RemoveEmptyEntries).Select(b => Convert.ToByte(b, 16)).ToArray())
             );
         }
+        private static bool GetLegacyEscapedPath(string path, out string escapedPath)
+        {
+            if (LegacyEscapingRegex.IsMatch(path))
+            {
+                escapedPath = LegacyEscapingRegex.Replace(path, m => "!" + ((byte)m.Value[0]).ToString("X2"));
+                return true;
+            }
+
+            escapedPath = null;
+            return false;
+        }
 
         private sealed class S3FileSystemItem : FileSystemItem
         {
@@ -493,9 +534,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 this.Size = null;
                 this.IsDirectory = true;
             }
-            public S3FileSystemItem(S3Object file)
+            public S3FileSystemItem(S3Object file, string key)
             {
-                this.Name = PathEx.GetFileName(file.Key);
+                this.Name = PathEx.GetFileName(key);
                 this.Size = file.Size;
                 this.IsDirectory = false;
                 this.LastModifyTime = new DateTimeOffset(file.LastModified.ToUniversalTime(), TimeSpan.Zero);

@@ -131,7 +131,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 }
             }
 
-            return new S3WriteStream(this, client, key);
+            return new WritablePositionStream(new S3WriteStream(this, client, key));
         }
 
         public override async Task DeleteFileAsync(string fileName)

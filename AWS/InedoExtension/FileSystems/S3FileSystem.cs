@@ -31,13 +31,10 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         private static readonly LazyRegex CleanPattern = new("(![0-9A-F][0-9A-F])+", RegexOptions.Compiled);
         private static readonly LazyRegex MultiSlashPattern = new("/{2,}", RegexOptions.Compiled);
 
-        private readonly Lazy<AmazonS3Client> client;
+        private Lazy<AmazonS3Client> client;
         private bool disposed;
 
-        public S3FileSystem()
-        {
-            this.client = new Lazy<AmazonS3Client>(this.CreateClient);
-        }
+        public S3FileSystem() => this.client = new Lazy<AmazonS3Client>(this.CreateClient);
 
         [Persistent]
         [DisplayName("Access key")]
@@ -81,6 +78,26 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         internal ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
 
         private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");
+        private AmazonS3Client Client
+        {
+            get
+            {
+                if (this.disposed)
+                    throw new ObjectDisposedException(nameof(S3FileSystem));
+
+                try
+                {
+                    return this.client.Value;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Attempt to work around an error condition of the S3 libraries that can cause
+                    // the client to get prematurely disposed.
+                    this.client = new Lazy<AmazonS3Client>(this.CreateClient);
+                    return this.client.Value;
+                }
+            }
+        }
 
         public override async Task<bool> FileExistsAsync(string fileName)
         {
@@ -116,7 +133,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            var client = this.client.Value;
+            var client = this.Client;
             var key = this.BuildPath(fileName);
 
             // if there was a legacy escaped path, delete it now since it should be logically overwritten by this
@@ -136,7 +153,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
         public override async Task DeleteFileAsync(string fileName)
         {
-            var client = this.client.Value;
+            var client = this.Client;
 
             try
             {
@@ -155,7 +172,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
         public override async Task CopyFileAsync(string sourceName, string targetName, bool overwrite)
         {
-            var client = this.client.Value;
+            var client = this.Client;
 
             if (!overwrite)
             {
@@ -215,7 +232,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (!recursive)
                 return;
 
-            var client = this.client.Value;
+            var client = this.Client;
 
             while (true)
             {
@@ -241,7 +258,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
         public override async Task<IEnumerable<FileSystemItem>> ListContentsAsync(string path)
         {
-            var client = this.client.Value;
+            var client = this.Client;
             var prefix = this.BuildPath(path) + "/";
             if (prefix == "/")
                 prefix = string.Empty;
@@ -310,7 +327,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            var client = this.client.Value;
+            var client = this.Client;
             var key = this.BuildPath(fileName);
 
             var response = await client.InitiateMultipartUploadAsync(
@@ -332,7 +349,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            var client = this.client.Value;
+            var client = this.Client;
             var key = this.BuildPath(fileName);
             return Task.FromResult<UploadStream>(new S3ResumableUploadStream(this, client, key, state));
         }
@@ -341,7 +358,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            var client = this.client.Value;
+            var client = this.Client;
             var key = this.BuildPath(fileName);
 
             using var stream = new S3ResumableUploadStream(this, client, key, state);
@@ -352,7 +369,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            var client = this.client.Value;
+            var client = this.Client;
             var key = this.BuildPath(fileName);
 
             using var stream = new S3ResumableUploadStream(this, client, key, state);
@@ -388,7 +405,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
         private async Task<GetObjectMetadataResponse> GetObjectMetadataAsync(string key)
         {
-            var client = this.client.Value;
+            var client = this.Client;
             try
             {
                 return await client.GetObjectMetadataAsync(
@@ -424,7 +441,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
         private async Task<Stream> GetObjectAsync(string key)
         {
-            var client = this.client.Value;
+            var client = this.Client;
             try
             {
                 var response = await client.GetObjectAsync(
@@ -472,7 +489,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
         private async Task CreateDirectoryInternalAsync(string path)
         {
-            var client = this.client.Value;
+            var client = this.Client;
             await client.PutObjectAsync(
                 new PutObjectRequest
                 {

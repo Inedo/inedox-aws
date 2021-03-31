@@ -270,15 +270,18 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 foreach (var file in response.S3Objects)
                 {
                     var key = OriginalPath(file.Key.Substring(prefix.Length));
-                    var slash = key.IndexOf('/');
-                    if (slash != -1)
+                    if (!string.IsNullOrEmpty(key))
                     {
-                        var dir = key.Substring(0, slash);
-                        seenDirectory.Add(dir);
-                    }
-                    else
-                    {
-                        contents.Add(new S3FileSystemItem(file, key));
+                        int slash = key.IndexOf('/');
+                        if (slash != -1)
+                        {
+                            var dir = key.Substring(0, slash);
+                            seenDirectory.Add(dir);
+                        }
+                        else
+                        {
+                            contents.Add(new S3FileSystemItem(file, key));
+                        }
                     }
                 }
             }

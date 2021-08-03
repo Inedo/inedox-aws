@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Inedo.Diagnostics;
 using Inedo.Documentation;
 using Inedo.Extensibility.FileSystems;
 using Inedo.Extensions.AWS;
@@ -147,8 +148,15 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 {
                 }
             }
-
-            return new WritablePositionStream(new S3WriteStream(this, client, key));
+            try
+            {
+                return new WritablePositionStream(new S3WriteStream(this, client, key));
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
 
         public override async Task DeleteFileAsync(string fileName)
@@ -168,6 +176,11 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
                 // The file does not exist, so the deletion technically succeeded.
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
             }
         }
         public override async Task CopyFileAsync(string sourceName, string targetName, bool overwrite)
@@ -192,39 +205,60 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 {
                     // The file does not exist yet, so we can continue.
                 }
+                catch (AmazonS3Exception ex)
+                {
+                    Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                    throw;
+                }
             }
 
-            await client.CopyObjectAsync(
-                new CopyObjectRequest
-                {
-                    SourceBucket = this.BucketName,
-                    SourceKey = this.BuildPath(sourceName),
-                    DestinationBucket = this.BucketName,
-                    DestinationKey = this.BuildPath(targetName),
-                    CannedACL = this.CannedACL,
-                    ServerSideEncryptionMethod = this.EncryptionMethod,
-                    StorageClass = this.StorageClass
-                }
-            ).ConfigureAwait(false);
+            try
+            {
+                await client.CopyObjectAsync(
+                    new CopyObjectRequest
+                    {
+                        SourceBucket = this.BucketName,
+                        SourceKey = this.BuildPath(sourceName),
+                        DestinationBucket = this.BucketName,
+                        DestinationKey = this.BuildPath(targetName),
+                        CannedACL = this.CannedACL,
+                        ServerSideEncryptionMethod = this.EncryptionMethod,
+                        StorageClass = this.StorageClass
+                    }
+                ).ConfigureAwait(false);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         public override async Task CreateDirectoryAsync(string directoryName)
         {
-            var path = directoryName?.Trim('/');
-
-            if (string.IsNullOrEmpty(path))
-                return;
-
-            if (await this.DirectoryExistsAsync(path).ConfigureAwait(false))
-                return;
-
-            await this.CreateDirectoryInternalAsync(path).ConfigureAwait(false);
-
-            // create other dirs just for good measure
-            var parts = path.Split('/');
-            for (int i = 1; i < parts.Length; i++)
+            try
             {
-                var dirPath = string.Join("/", parts.Take(i));
-                await this.CreateDirectoryAsync(dirPath).ConfigureAwait(false);
+                var path = directoryName?.Trim('/');
+
+                if (string.IsNullOrEmpty(path))
+                    return;
+
+                if (await this.DirectoryExistsAsync(path).ConfigureAwait(false))
+                    return;
+
+                await this.CreateDirectoryInternalAsync(path).ConfigureAwait(false);
+
+                // create other dirs just for good measure
+                var parts = path.Split('/');
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    var dirPath = string.Join("/", parts.Take(i));
+                    await this.CreateDirectoryAsync(dirPath).ConfigureAwait(false);
+                }
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
             }
         }
         public override async Task DeleteDirectoryAsync(string directoryName, bool recursive)
@@ -236,24 +270,32 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
             while (true)
             {
-                var files = await client.ListObjectsV2Async(
-                    new ListObjectsV2Request
-                    {
-                        BucketName = this.BucketName,
-                        Prefix = this.BuildPath(directoryName) + "/"
-                    }
-                ).ConfigureAwait(false);
+                try
+                {
+                    var files = await client.ListObjectsV2Async(
+                        new ListObjectsV2Request
+                        {
+                            BucketName = this.BucketName,
+                            Prefix = this.BuildPath(directoryName) + "/"
+                        }
+                    ).ConfigureAwait(false);
 
-                if (!files.S3Objects.Any())
-                    break;
+                    if (!files.S3Objects.Any())
+                        break;
 
-                await client.DeleteObjectsAsync(
-                    new DeleteObjectsRequest
-                    {
-                        BucketName = this.BucketName,
-                        Objects = files.S3Objects.Select(o => new KeyVersion { Key = o.Key }).ToList()
-                    }
-                ).ConfigureAwait(false);
+                    await client.DeleteObjectsAsync(
+                        new DeleteObjectsRequest
+                        {
+                            BucketName = this.BucketName,
+                            Objects = files.S3Objects.Select(o => new KeyVersion { Key = o.Key }).ToList()
+                        }
+                    ).ConfigureAwait(false);
+                }
+                catch (AmazonS3Exception ex)
+                {
+                    Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                    throw;
+                }
             }
         }
         public override async Task<IEnumerable<FileSystemItem>> ListContentsAsync(string path)
@@ -266,45 +308,52 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var contents = new List<S3FileSystemItem>();
             var seenDirectory = new HashSet<string>();
             string continuationToken = null;
-
-            do
+            try
             {
-                var response = await client.ListObjectsV2Async(
-                    new ListObjectsV2Request
-                    {
-                        BucketName = this.BucketName,
-                        Prefix = prefix,
-                        Delimiter = "/",
-                        ContinuationToken = continuationToken
-                    }
-                ).ConfigureAwait(false);
-
-                continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
-
-                if (response.CommonPrefixes != null)
-                    seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
-
-                foreach (var file in response.S3Objects)
+                do
                 {
-                    var key = OriginalPath(file.Key.Substring(prefix.Length));
-                    if (!string.IsNullOrEmpty(key))
-                    {
-                        int slash = key.IndexOf('/');
-                        if (slash != -1)
+                    var response = await client.ListObjectsV2Async(
+                        new ListObjectsV2Request
                         {
-                            var dir = key.Substring(0, slash);
-                            seenDirectory.Add(dir);
+                            BucketName = this.BucketName,
+                            Prefix = prefix,
+                            Delimiter = "/",
+                            ContinuationToken = continuationToken
                         }
-                        else
+                    ).ConfigureAwait(false);
+
+                    continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+
+                    if (response.CommonPrefixes != null)
+                        seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
+
+                    foreach (var file in response.S3Objects)
+                    {
+                        var key = OriginalPath(file.Key.Substring(prefix.Length));
+                        if (!string.IsNullOrEmpty(key))
                         {
-                            contents.Add(new S3FileSystemItem(file, key));
+                            int slash = key.IndexOf('/');
+                            if (slash != -1)
+                            {
+                                var dir = key.Substring(0, slash);
+                                seenDirectory.Add(dir);
+                            }
+                            else
+                            {
+                                contents.Add(new S3FileSystemItem(file, key));
+                            }
                         }
                     }
                 }
-            }
-            while (continuationToken != null);
+                while (continuationToken != null);
 
-            return seenDirectory.Select(d => new S3FileSystemItem(d)).Concat(contents);
+                return seenDirectory.Select(d => new S3FileSystemItem(d)).Concat(contents);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
 
             static string parseCommonPrefix(string p)
             {
@@ -330,19 +379,27 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var client = this.Client;
             var key = this.BuildPath(fileName);
 
-            var response = await client.InitiateMultipartUploadAsync(
-                new InitiateMultipartUploadRequest
-                {
-                    BucketName = this.BucketName,
-                    Key = key,
-                    StorageClass = this.StorageClass,
-                    CannedACL = this.CannedACL,
-                    ServerSideEncryptionMethod = this.EncryptionMethod
-                },
-                cancellationToken
-            ).ConfigureAwait(false);
+            try
+            {
+                var response = await client.InitiateMultipartUploadAsync(
+                    new InitiateMultipartUploadRequest
+                    {
+                        BucketName = this.BucketName,
+                        Key = key,
+                        StorageClass = this.StorageClass,
+                        CannedACL = this.CannedACL,
+                        ServerSideEncryptionMethod = this.EncryptionMethod
+                    },
+                    cancellationToken
+                ).ConfigureAwait(false);
 
-            return new S3ResumableUploadStream(this, client, key, response.UploadId);
+                return new S3ResumableUploadStream(this, client, key, response.UploadId);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         public override Task<UploadStream> ContinueResumableUploadAsync(string fileName, byte[] state, CancellationToken cancellationToken = default)
         {
@@ -351,7 +408,15 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
             var client = this.Client;
             var key = this.BuildPath(fileName);
-            return Task.FromResult<UploadStream>(new S3ResumableUploadStream(this, client, key, state));
+            try
+            {
+                return Task.FromResult<UploadStream>(new S3ResumableUploadStream(this, client, key, state));
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         public override async Task CompleteResumableUploadAsync(string fileName, byte[] state, CancellationToken cancellationToken = default)
         {
@@ -361,8 +426,16 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var client = this.Client;
             var key = this.BuildPath(fileName);
 
-            using var stream = new S3ResumableUploadStream(this, client, key, state);
-            await stream.CompleteAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using var stream = new S3ResumableUploadStream(this, client, key, state);
+                await stream.CompleteAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         public override async Task CancelResumableUploadAsync(string fileName, byte[] state, CancellationToken cancellationToken = default)
         {
@@ -372,8 +445,16 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var client = this.Client;
             var key = this.BuildPath(fileName);
 
-            using var stream = new S3ResumableUploadStream(this, client, key, state);
-            await stream.CancelAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using var stream = new S3ResumableUploadStream(this, client, key, state);
+                await stream.CancelAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
 
         public override RichDescription GetDescription()
@@ -438,6 +519,11 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
                 return null;
             }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         private async Task<Stream> GetObjectAsync(string key)
         {
@@ -478,6 +564,11 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
                 return null;
             }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         private async Task<S3FileSystemItem> GetDirectoryAsync(string path)
         {
@@ -490,17 +581,25 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         private async Task CreateDirectoryInternalAsync(string path)
         {
             var client = this.Client;
-            await client.PutObjectAsync(
-                new PutObjectRequest
-                {
-                    BucketName = this.BucketName,
-                    Key = this.BuildPath(path) + "/",
-                    InputStream = Stream.Null,
-                    CannedACL = this.CannedACL,
-                    StorageClass = this.StorageClass,
-                    ServerSideEncryptionMethod = this.EncryptionMethod
-                }
-            ).ConfigureAwait(false);
+            try
+            {
+                await client.PutObjectAsync(
+                    new PutObjectRequest
+                    {
+                        BucketName = this.BucketName,
+                        Key = this.BuildPath(path) + "/",
+                        InputStream = Stream.Null,
+                        CannedACL = this.CannedACL,
+                        StorageClass = this.StorageClass,
+                        ServerSideEncryptionMethod = this.EncryptionMethod
+                    }
+                ).ConfigureAwait(false);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
         }
         private AWSCredentials CreateCredentials()
         {

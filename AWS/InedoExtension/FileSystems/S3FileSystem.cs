@@ -77,9 +77,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         internal S3CannedACL CannedACL => this.MakePublic ? S3CannedACL.PublicRead : S3CannedACL.NoACL;
         internal S3StorageClass StorageClass => S3StorageClass.Standard;
         internal ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
-
-        private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");
-        private AmazonS3Client Client
+        internal AmazonS3Client Client
         {
             get
             {
@@ -99,6 +97,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 }
             }
         }
+
+        private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");
 
         public override async Task<bool> FileExistsAsync(string fileName)
         {
@@ -126,8 +126,21 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             if (string.IsNullOrEmpty(fileName))
                 throw new ArgumentNullException(nameof(fileName));
 
-            return (await this.GetObjectAsync(this.BuildPath(fileName)).ConfigureAwait(false))
-                ?? throw new FileNotFoundException("File not found: " + fileName, fileName);
+            var path = this.BuildPath(fileName);
+
+            if (hints.HasFlag(FileAccessHints.RandomAccess))
+            {
+                var metadata = await this.GetObjectMetadataAsync(path, cancellationToken).ConfigureAwait(false);
+                if (metadata == null)
+                    throw new FileNotFoundException("File not found: " + fileName, fileName);
+
+                return new BufferedStream(new RandomAccessS3Stream(this, metadata, this.BucketName, path), 32 * 1024);
+            }
+            else
+            {
+                return (await this.GetObjectAsync(path).ConfigureAwait(false))
+                    ?? throw new FileNotFoundException("File not found: " + fileName, fileName);
+            }
         }
         public override async Task<Stream> CreateFileAsync(string fileName, FileAccessHints hints = FileAccessHints.Default, CancellationToken cancellationToken = default)
         {
@@ -484,7 +497,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             base.Dispose(disposing);
         }
 
-        private async Task<GetObjectMetadataResponse> GetObjectMetadataAsync(string key)
+        private async Task<GetObjectMetadataResponse> GetObjectMetadataAsync(string key, CancellationToken cancellationToken = default)
         {
             var client = this.Client;
             try
@@ -494,7 +507,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     {
                         BucketName = this.BucketName,
                         Key = key
-                    }
+                    },
+                    cancellationToken
                 ).ConfigureAwait(false);
             }
             catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -509,7 +523,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                             {
                                 BucketName = this.BucketName,
                                 Key = escapedPath
-                            }
+                            },
+                            cancellationToken
                         ).ConfigureAwait(false);
                     }
                     catch

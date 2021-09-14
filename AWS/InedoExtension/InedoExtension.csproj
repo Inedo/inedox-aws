@@ -8,8 +8,8 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="3.7.1.24" />
-    <PackageReference Include="Inedo.SDK" Version="1.13.0-ci.4">
+    <PackageReference Include="AWSSDK.S3" Version="3.7.2.5" />
+    <PackageReference Include="Inedo.SDK" Version="1.13.0-ci.10">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

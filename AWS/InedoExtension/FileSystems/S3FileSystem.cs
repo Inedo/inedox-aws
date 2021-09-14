@@ -42,6 +42,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         public string AccessKey { get; set; }
         [Persistent(Encrypted = true)]
         [DisplayName("Secret access key")]
+        [FieldEditMode(FieldEditMode.Password)]
         public string SecretAccessKey { get; set; }
         [Required]
         [Persistent]
@@ -56,19 +57,23 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [PlaceholderText("none (use bucket root)")]
         public string TargetPath { get; set; }
         [Persistent]
+        [HideFromImporter]
         [Category("Storage")]
         [DisplayName("Make public")]
         public bool MakePublic { get; set; }
         [Persistent]
+        [HideFromImporter]
         [Category("Storage")]
         [DisplayName("Use server-side encryption")]
         public bool Encrypted { get; set; }
         [Persistent]
+        [HideFromImporter]
         [Category("Advanced")]
         [DisplayName("Instance role")]
         [Description("This overrides the access key and secret key; only available on EC2 instances.")]
         public string InstanceRole { get; set; }
         [Persistent]
+        [HideFromImporter]
         [Category("Advanced")]
         [DisplayName("Custom service URL")]
         [Description("Specifying a custom service URL will override the region endpoint.")]
@@ -382,6 +387,43 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 return new S3FileSystemItem(PathEx.GetFileName(path), metadata);
 
             return await this.GetDirectoryAsync(path).ConfigureAwait(false);
+        }
+        public override async Task<long?> GetDirectoryContentSizeAsync(string path, bool recursive, CancellationToken cancellationToken = default)
+        {
+            var client = this.Client;
+            var prefix = this.BuildPath(path) + "/";
+            if (prefix == "/")
+                prefix = string.Empty;
+
+            long size = 0;
+            string continuationToken = null;
+            try
+            {
+                do
+                {
+                    var response = await client.ListObjectsV2Async(
+                        new ListObjectsV2Request
+                        {
+                            BucketName = this.BucketName,
+                            Prefix = prefix,
+                            Delimiter = !recursive ? "/" : null,
+                            ContinuationToken = continuationToken
+                        }
+                    ).ConfigureAwait(false);
+
+                    continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+
+                    size += response.S3Objects.Sum(o => o.Size);
+                }
+                while (continuationToken != null);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                throw;
+            }
+
+            return size;
         }
 
         public override async Task<UploadStream> BeginResumableUploadAsync(string fileName, CancellationToken cancellationToken = default)

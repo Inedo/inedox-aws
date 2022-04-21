@@ -122,7 +122,7 @@ namespace Inedo.Extensions.AWS.Operations
             using var s3 = this.CreateClient(credentials);
             foreach (var file in files)
             {
-                var keyName = prefix + file.FullName.Substring(sourceDirectory.Length).Replace(Path.DirectorySeparatorChar, '/').Trim('/');
+                var keyName = prefix + file.FullName[sourceDirectory.Length..].Replace(Path.DirectorySeparatorChar, '/').Trim('/');
                 this.LogInformation($"Transferring {file.FullName} to {keyName} ({AH.FormatSize(file.Size)})...");
                 using var fileStream = await fileOps.OpenFileAsync(file.FullName, FileMode.Open, FileAccess.Read);
                 if (file.Size < this.PartSize * 2)
@@ -158,7 +158,7 @@ namespace Inedo.Extensions.AWS.Operations
                     "from ",
                     new DirectoryHilite(config[nameof(this.SourceDirectory)]),
                     " to ",
-                    new Hilite(config[nameof(this.BucketName)] + AH.ConcatNE("/", config[nameof(this.KeyPrefix)]))
+                    new Hilite((config[nameof(this.BucketName)] + "/" + config[nameof(this.KeyPrefix)]).TrimEnd('/'))
                 )
             );
         }

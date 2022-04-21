@@ -60,7 +60,6 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             await this.tempStream.WriteAsync(buffer, offset, count, cancellationToken).ConfigureAwait(false);
             this.IncrementBytesWritten(count);
         }
-#if !NET452
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             this.tempStream.Write(buffer);
@@ -72,7 +71,6 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             this.IncrementBytesWritten(buffer.Length);
         }
         public override ValueTask DisposeAsync() => this.tempStream.DisposeAsync();
-#endif
 
         public override async Task<byte[]> CommitAsync(CancellationToken cancellationToken = default)
         {

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -105,15 +106,15 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
         private string Prefix => string.IsNullOrEmpty(this.TargetPath) || this.TargetPath.EndsWith("/") ? this.TargetPath ?? string.Empty : (this.TargetPath + "/");
 
-        public override async Task<bool> FileExistsAsync(string fileName)
+        public override async ValueTask<bool> FileExistsAsync(string fileName, CancellationToken cancellationToken = default)
         {
             var path = fileName?.Trim('/');
             if (string.IsNullOrEmpty(path))
                 return false;
 
-            return (await this.GetObjectMetadataAsync(this.BuildPath(path)).ConfigureAwait(false)) is not null;
+            return (await this.GetObjectMetadataAsync(this.BuildPath(path), cancellationToken).ConfigureAwait(false)) is not null;
         }
-        public override async Task<bool> DirectoryExistsAsync(string directoryName)
+        public override async ValueTask<bool> DirectoryExistsAsync(string directoryName, CancellationToken cancellationToken = default)
         {
             var path = directoryName?.Trim('/');
 
@@ -160,15 +161,16 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             {
                 try
                 {
-                    await this.DeleteFileAsync(escapedPath).ConfigureAwait(false);
+                    await this.DeleteFileAsync(escapedPath, cancellationToken).ConfigureAwait(false);
                 }
                 catch
                 {
                 }
             }
+
             try
             {
-                return new WritablePositionStream(new S3WriteStream(this, client, key));
+                return new S3WriteStream(this, client, key);
             }
             catch (AmazonS3Exception ex)
             {
@@ -177,7 +179,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             }
         }
 
-        public override async Task DeleteFileAsync(string fileName)
+        public override async Task DeleteFileAsync(string fileName, CancellationToken cancellationToken = default)
         {
             var client = this.Client;
 
@@ -188,7 +190,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     {
                         BucketName = this.BucketName,
                         Key = this.BuildPath(fileName)
-                    }
+                    },
+                    cancellationToken
                 ).ConfigureAwait(false);
             }
             catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -201,7 +204,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 throw;
             }
         }
-        public override async Task CopyFileAsync(string sourceName, string targetName, bool overwrite)
+        public override async Task CopyFileAsync(string sourceName, string targetName, bool overwrite, CancellationToken cancellationToken = default)
         {
             var client = this.Client;
 
@@ -214,7 +217,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         {
                             BucketName = this.BucketName,
                             Key = this.BuildPath(targetName),
-                        }
+                        },
+                        cancellationToken
                     ).ConfigureAwait(false);
 
                     throw new IOException("Destination file exists, but overwrite is not allowed: " + targetName);
@@ -242,7 +246,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         CannedACL = this.CannedACL,
                         ServerSideEncryptionMethod = this.EncryptionMethod,
                         StorageClass = this.StorageClass
-                    }
+                    },
+                    cancellationToken
                 ).ConfigureAwait(false);
             }
             catch (AmazonS3Exception ex)
@@ -251,7 +256,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 throw;
             }
         }
-        public override async Task CreateDirectoryAsync(string directoryName)
+        public override async Task CreateDirectoryAsync(string directoryName, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -260,7 +265,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 if (string.IsNullOrEmpty(path))
                     return;
 
-                if (await this.DirectoryExistsAsync(path).ConfigureAwait(false))
+                if (await this.DirectoryExistsAsync(path, cancellationToken).ConfigureAwait(false))
                     return;
 
                 await this.CreateDirectoryInternalAsync(path).ConfigureAwait(false);
@@ -270,7 +275,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 for (int i = 1; i < parts.Length; i++)
                 {
                     var dirPath = string.Join("/", parts.Take(i));
-                    await this.CreateDirectoryAsync(dirPath).ConfigureAwait(false);
+                    await this.CreateDirectoryAsync(dirPath, cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (AmazonS3Exception ex)
@@ -279,7 +284,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 throw;
             }
         }
-        public override async Task DeleteDirectoryAsync(string directoryName, bool recursive)
+        public override async Task DeleteDirectoryAsync(string directoryName, bool recursive, CancellationToken cancellationToken = default)
         {
             if (!recursive)
                 return;
@@ -295,7 +300,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         {
                             BucketName = this.BucketName,
                             Prefix = this.BuildPath(directoryName) + "/"
-                        }
+                        },
+                        cancellationToken
                     ).ConfigureAwait(false);
 
                     if (!files.S3Objects.Any())
@@ -306,7 +312,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         {
                             BucketName = this.BucketName,
                             Objects = files.S3Objects.Select(o => new KeyVersion { Key = o.Key }).ToList()
-                        }
+                        },
+                        cancellationToken
                     ).ConfigureAwait(false);
                 }
                 catch (AmazonS3Exception ex)
@@ -316,7 +323,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 }
             }
         }
-        public override async Task<IEnumerable<FileSystemItem>> ListContentsAsync(string path)
+        public override async IAsyncEnumerable<FileSystemItem> ListContentsAsync(string path, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var client = this.Client;
             var prefix = this.BuildPath(path) + "/";
@@ -326,69 +333,72 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var contents = new List<S3FileSystemItem>();
             var seenDirectory = new HashSet<string>();
             string continuationToken = null;
-            try
+            do
             {
-                do
+                ListObjectsV2Response response;
+                try
                 {
-                    var response = await client.ListObjectsV2Async(
+                    response = await client.ListObjectsV2Async(
                         new ListObjectsV2Request
                         {
                             BucketName = this.BucketName,
                             Prefix = prefix,
                             Delimiter = "/",
                             ContinuationToken = continuationToken
-                        }
+                        },
+                        cancellationToken
                     ).ConfigureAwait(false);
+                }
+                catch (AmazonS3Exception ex)
+                {
+                    Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
+                    throw;
+                }
 
-                    continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+                continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
 
-                    if (response.CommonPrefixes != null)
-                        seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
+                if (response.CommonPrefixes != null)
+                    seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
 
-                    foreach (var file in response.S3Objects)
+                foreach (var file in response.S3Objects)
+                {
+                    var key = OriginalPath(file.Key[prefix.Length..]);
+                    if (!string.IsNullOrEmpty(key))
                     {
-                        var key = OriginalPath(file.Key.Substring(prefix.Length));
-                        if (!string.IsNullOrEmpty(key))
+                        int slash = key.IndexOf('/');
+                        if (slash != -1)
                         {
-                            int slash = key.IndexOf('/');
-                            if (slash != -1)
-                            {
-                                var dir = key.Substring(0, slash);
-                                seenDirectory.Add(dir);
-                            }
-                            else
-                            {
-                                contents.Add(new S3FileSystemItem(file, key));
-                            }
+                            var dir = key[..slash];
+                            seenDirectory.Add(dir);
+                        }
+                        else
+                        {
+                            yield return new S3FileSystemItem(file, key);
                         }
                     }
                 }
-                while (continuationToken != null);
+            }
+            while (continuationToken != null);
 
-                return seenDirectory.Select(d => new S3FileSystemItem(d)).Concat(contents);
-            }
-            catch (AmazonS3Exception ex)
-            {
-                Logger.Log(MessageLevel.Debug, $"Amazon S3 Exception; Request Id: {ex.RequestId}; {ex.Message}", "Amazon S3", ex.ToString(), ex);
-                throw;
-            }
+            foreach (var d in seenDirectory)
+                yield return new S3FileSystemItem(d);
 
             static string parseCommonPrefix(string p)
             {
                 var path = p.Trim('/');
                 int index = path.LastIndexOf('/');
-                return index >= 0 ? path.Substring(index + 1) : path;
+                return index >= 0 ? path[(index + 1)..] : path;
             }
         }
-        public override async Task<FileSystemItem> GetInfoAsync(string path)
+        public override async Task<FileSystemItem> GetInfoAsync(string path, CancellationToken cancellationToken = default)
         {
-            var metadata = await this.GetObjectMetadataAsync(this.BuildPath(path)).ConfigureAwait(false);
+            var metadata = await this.GetObjectMetadataAsync(this.BuildPath(path), cancellationToken).ConfigureAwait(false);
             if (metadata is not null)
                 return new S3FileSystemItem(PathEx.GetFileName(path), metadata);
 
             return await this.GetDirectoryAsync(path).ConfigureAwait(false);
         }
-        public override async Task<long?> GetDirectoryContentSizeAsync(string path, bool recursive, CancellationToken cancellationToken = default)
+        public override async ValueTask<long?> GetDirectoryContentSizeAsync(string path, bool recursive, CancellationToken cancellationToken = default)
         {
             var client = this.Client;
             var prefix = this.BuildPath(path) + "/";
@@ -408,7 +418,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                             Prefix = prefix,
                             Delimiter = !recursive ? "/" : null,
                             ContinuationToken = continuationToken
-                        }
+                        },
+                        cancellationToken
                     ).ConfigureAwait(false);
 
                     continuationToken = response.IsTruncated ? response.NextContinuationToken : null;

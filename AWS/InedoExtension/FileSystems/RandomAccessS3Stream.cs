@@ -37,16 +37,19 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
 
         public override int Read(byte[] buffer, int offset, int count) => this.ReadAsync(buffer, offset, count, default).GetAwaiter().GetResult();
-        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
+            ArgumentNullException.ThrowIfNull(buffer);
             if (offset < 0)
                 throw new ArgumentNullException(nameof(offset));
             if (count < 0)
                 throw new ArgumentOutOfRangeException(nameof(count));
 
-            long endPosition = Math.Min(this.objectMetadata.ContentLength, this.position + count);
+            return this.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            long endPosition = Math.Min(this.objectMetadata.ContentLength, this.position + buffer.Length);
             if (this.position == endPosition)
                 return 0;
 
@@ -66,12 +69,12 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             int bytesRead = 0;
             int bytesRemaining = (int)(endPosition - this.position);
 
-            int n = await responseStream.ReadAsync(buffer, offset, bytesRemaining, cancellationToken).ConfigureAwait(false);
+            int n = await responseStream.ReadAsync(buffer.Slice(bytesRead, bytesRemaining), cancellationToken).ConfigureAwait(false);
             bytesRead += n;
             bytesRemaining -= n;
             while (n > 0 && bytesRemaining > 0)
             {
-                n = await responseStream.ReadAsync(buffer, offset + bytesRead, bytesRemaining, cancellationToken).ConfigureAwait(false);
+                n = await responseStream.ReadAsync(buffer.Slice(bytesRead, bytesRemaining), cancellationToken).ConfigureAwait(false);
                 bytesRead += n;
                 bytesRemaining -= n;
             }
@@ -79,6 +82,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             this.position += bytesRead;
             return bytesRead;
         }
+
         public override long Seek(long offset, SeekOrigin origin)
         {
             return this.position = origin switch

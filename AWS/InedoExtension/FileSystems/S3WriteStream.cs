@@ -43,7 +43,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         }
         public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            await this.writeStream.WriteAsync(buffer, 0, count, cancellationToken).ConfigureAwait(false);
+            await this.writeStream.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
             this.CheckAndBeginBackgroundUpload();
         }
         public override void WriteByte(byte value)
@@ -61,8 +61,6 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
-
-#if !NET452
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             this.writeStream.Write(buffer);
@@ -83,7 +81,6 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 this.disposed = true;
             }
         }
-#endif
 
         private async Task CompleteUploadAsync()
         {

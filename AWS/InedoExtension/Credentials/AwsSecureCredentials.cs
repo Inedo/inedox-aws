@@ -22,6 +22,6 @@ namespace Inedo.Extensions.AWS.Credentials
         [Required]
         public SecureString SecretAccessKey { get; set; }
 
-        public override RichDescription GetDescription() => new RichDescription("Access key: ", new Hilite(this.AccessKeyId));
+        public override RichDescription GetDescription() => new("Access key: ", new Hilite(this.AccessKeyId));
     }
 }

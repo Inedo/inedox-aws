@@ -67,12 +67,21 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Category("Storage")]
         [DisplayName("Use server-side encryption")]
         public bool Encrypted { get; set; }
+        
         [Persistent]
         [HideFromImporter]
         [Category("Advanced")]
-        [DisplayName("Instance role")]
-        [Description("This overrides the access key and secret key; only available on EC2 instances.")]
+        [DisplayName("IAM Role")]
+        [Description("This overrides the access key and secret key; only available on EC2 instances or ECS Tasks.")]
         public string InstanceRole { get; set; }
+
+        [Persistent]
+        [HideFromImporter]
+        [Category("Advanced")]
+        [DisplayName("Use Instance Profile")]
+        [Description("When using an IAM Role, this indicates if the role is an instance profile.")]
+        public bool UseInstanceProfile { get; set; } = true;
+
         [Persistent]
         [HideFromImporter]
         [Category("Advanced")]
@@ -669,13 +678,23 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 throw;
             }
         }
+        
         private AWSCredentials CreateCredentials()
         {
             if (string.IsNullOrEmpty(this.InstanceRole))
                 return new BasicAWSCredentials(this.AccessKey, this.SecretAccessKey);
 
-            return new InstanceProfileAWSCredentials(this.InstanceRole);
+            if (this.UseInstanceProfile)
+                return new InstanceProfileAWSCredentials(this.InstanceRole);
+
+            // we need to check for the role arn as assume role needs the full arn
+            if (!Regex.IsMatch(this.InstanceRole, @"^(arn:aws:iam::)([0-9]+)(role\/).*"))
+                throw new InvalidOperationException("Invalid IAM ARN specified");
+
+            var sourceCredentials = new EnvironmentVariablesAWSCredentials();
+            return new AssumeRoleAWSCredentials(sourceCredentials, this.InstanceRole, "inedo-aws-extension", new AssumeRoleAWSCredentialsOptions());
         }
+        
         private AmazonS3Config CreateS3Config()
         {
             // https://docs.aws.amazon.com/sdk-for-net/v3/developer-guide/net-dg-region-selection.html
@@ -686,12 +705,15 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             else
                 return new AmazonS3Config { RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint) };
         }
+        
         private AmazonS3Client CreateClient() => new(this.CreateCredentials(), this.CreateS3Config());
+        
         private string BuildPath(string path)
         {
             path = MultiSlashPattern.Replace(path.Trim('/'), string.Empty);
             return (this.Prefix + path)?.Trim('/');
         }
+        
         private static string OriginalPath(string path)
         {
             // This should be removed at some point.
@@ -701,6 +723,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 m => InedoLib.UTF8Encoding.GetString(m.Value.Split(new[] { '!' }, StringSplitOptions.RemoveEmptyEntries).Select(b => Convert.ToByte(b, 16)).ToArray())
             );
         }
+        
         private static bool GetLegacyEscapedPath(string path, out string escapedPath)
         {
             if (LegacyEscapingRegex.IsMatch(path))

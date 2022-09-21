@@ -67,7 +67,6 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Category("Storage")]
         [DisplayName("Use server-side encryption")]
         public bool Encrypted { get; set; }
-
         [Persistent]
         [HideFromImporter]
         [Category("Advanced")]
@@ -688,7 +687,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 return new InstanceProfileAWSCredentials(this.InstanceRole);
 
             // we need to check for the role arn as assume role needs the full arn
-            if (!Regex.IsMatch(this.InstanceRole, @"^(arn:aws:iam::)([0-9]+)(:role\/).*"))
+            if (!Regex.IsMatch(this.InstanceRole, @"^(arn:aws:iam::)([0-9]+)(role\/).*"))
                 throw new InvalidOperationException("Invalid IAM ARN specified");
 
             var sourceCredentials = new EnvironmentVariablesAWSCredentials();

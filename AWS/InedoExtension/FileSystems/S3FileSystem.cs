@@ -678,20 +678,15 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             }
         }
 
-        private AWSCredentials CreateCredentials()
+        private AWSCredentials? CreateCredentials()
         {
-            if (string.IsNullOrEmpty(this.InstanceRole))
+            if ((!string.IsNullOrEmpty(this.AccessKey)) && (!string.IsNullOrEmpty(this.SecretAccessKey)))
                 return new BasicAWSCredentials(this.AccessKey, this.SecretAccessKey);
 
-            if (this.UseInstanceProfile)
+            if ((this.UseInstanceProfile) && (!string.IsNullOrEmpty(this.InstanceRole)))
                 return new InstanceProfileAWSCredentials(this.InstanceRole);
 
-            // we need to check for the role arn as assume role needs the full arn
-            if (!Regex.IsMatch(this.InstanceRole, @"^(arn:aws:iam::)([0-9]+)(:role\/).*"))
-                throw new InvalidOperationException("Invalid IAM ARN specified");
-
-            var sourceCredentials = new EnvironmentVariablesAWSCredentials();
-            return new AssumeRoleAWSCredentials(sourceCredentials, this.InstanceRole, "inedo-aws-extension", new AssumeRoleAWSCredentialsOptions());
+            return null;
         }
 
         private AmazonS3Config CreateS3Config()
@@ -705,7 +700,15 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 return new AmazonS3Config { RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint) };
         }
 
-        private AmazonS3Client CreateClient() => new(this.CreateCredentials(), this.CreateS3Config());
+        private AmazonS3Client CreateClient()
+        {
+            var creds = this.CreateCredentials();
+
+            if (creds == null)
+                return new(this.CreateS3Config());
+            else
+                return new(creds, this.CreateS3Config());
+        }
 
         private string BuildPath(string path)
         {

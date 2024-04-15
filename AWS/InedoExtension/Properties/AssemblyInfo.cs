@@ -7,14 +7,14 @@ using Inedo.Extensibility;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Inedo, LLC")]
 [assembly: AssemblyProduct("any")]
-[assembly: AssemblyCopyright("Copyright © Inedo 2022")]
+[assembly: AssemblyCopyright("Copyright © Inedo 2024")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
 [assembly: ComVisible(false)]
 
-[assembly: AssemblyVersion("1.0.2")]
-[assembly: AssemblyFileVersion("1.0.2")]
+[assembly: AssemblyVersion("3.0.0")]
+[assembly: AssemblyFileVersion("3.0.0")]
 
 [assembly: ScriptNamespace("AWS")]
 [assembly: AppliesToAttribute (InedoProduct.BuildMaster | InedoProduct.Otter | InedoProduct.ProGet)]

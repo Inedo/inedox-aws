@@ -3,13 +3,13 @@
     <AssemblyName>AWS</AssemblyName>
     <RootNamespace>Inedo.Extensions.AWS</RootNamespace>
     <OutputType>Library</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="3.7.9.23" />
-    <PackageReference Include="Inedo.SDK" Version="2.0.0">
+    <PackageReference Include="AWSSDK.S3" Version="3.7.307.15" />
+    <PackageReference Include="Inedo.SDK" Version="3.0.0-ci.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

@@ -678,7 +678,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             }
         }
 
-        private AWSCredentials? CreateCredentials()
+        private AWSCredentials CreateCredentials()
         {
             if ((!string.IsNullOrEmpty(this.AccessKey)) && (!string.IsNullOrEmpty(this.SecretAccessKey)))
                 return new BasicAWSCredentials(this.AccessKey, this.SecretAccessKey);

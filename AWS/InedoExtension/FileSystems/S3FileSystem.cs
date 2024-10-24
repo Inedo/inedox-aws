@@ -27,12 +27,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3PackageStore,Amazon")]
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3FileSystem,Amazon")]
     [PersistFrom("Inedo.ProGet.Extensions.Amazon.PackageStores.S3FileSystem,AWS")]
-    public sealed class S3FileSystem : FileSystem
+    public sealed partial class S3FileSystem : FileSystem
     {
-        private static readonly LazyRegex LegacyEscapingRegex = new(@"[&$\x00-\x1f\x7f@=;:+ ,?\\{^}%`\]""'>\[~<#|!]");
-        private static readonly LazyRegex CleanPattern = new("(![0-9A-F][0-9A-F])+", RegexOptions.Compiled);
-        private static readonly LazyRegex MultiSlashPattern = new("/{2,}", RegexOptions.Compiled);
-
         private Lazy<AmazonS3Client> client;
         private bool disposed;
 
@@ -712,7 +708,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
         private string BuildPath(string path)
         {
-            path = MultiSlashPattern.Replace(path.Trim('/'), string.Empty);
+            path = MultiSlashPatternRegex().Replace(path.Trim('/'), string.Empty);
             return (this.Prefix + path)?.Trim('/');
         }
 
@@ -720,17 +716,17 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         {
             // This should be removed at some point.
             // The AWS extension used to perform escaping of certain characters but this is no longer recommended.
-            return CleanPattern.Replace(
+            return CleanPatternRegex().Replace(
                 path,
-                m => InedoLib.UTF8Encoding.GetString(m.Value.Split(new[] { '!' }, StringSplitOptions.RemoveEmptyEntries).Select(b => Convert.ToByte(b, 16)).ToArray())
+                m => InedoLib.UTF8Encoding.GetString(m.Value.Split('!', StringSplitOptions.RemoveEmptyEntries).Select(b => Convert.ToByte(b, 16)).ToArray())
             );
         }
 
         private static bool GetLegacyEscapedPath(string path, out string escapedPath)
         {
-            if (LegacyEscapingRegex.IsMatch(path))
+            if (LegacyEscapingRegex().IsMatch(path))
             {
-                escapedPath = LegacyEscapingRegex.Replace(path, m => "!" + ((byte)m.Value[0]).ToString("X2"));
+                escapedPath = LegacyEscapingRegex().Replace(path, m => "!" + ((byte)m.Value[0]).ToString("X2"));
                 return true;
             }
 
@@ -766,5 +762,12 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             public override bool IsDirectory { get; }
             public override DateTimeOffset? LastModifyTime { get; }
         }
+
+        [GeneratedRegex(@"[&$\x00-\x1f\x7f@=;:+ ,?\\{^}%`\]""'>\[~<#|!]")]
+        private static partial Regex LegacyEscapingRegex();
+        [GeneratedRegex("(![0-9A-F][0-9A-F])+")]
+        private static partial Regex CleanPatternRegex();
+        [GeneratedRegex("/{2,}")]
+        private static partial Regex MultiSlashPatternRegex();
     }
 }

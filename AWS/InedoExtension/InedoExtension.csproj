@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.405.2" />
+    <PackageReference Include="AWSSDK.SecurityToken" Version="3.7.400.38" />
     <PackageReference Include="Inedo.SDK" Version="3.1.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

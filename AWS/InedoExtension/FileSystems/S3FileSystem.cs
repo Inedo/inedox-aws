@@ -80,6 +80,13 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Persistent]
         [HideFromImporter]
         [Category("Advanced")]
+        [DisplayName("Enable Path Style for S3")]
+        [Description("Activate path-style URLs for accessing Amazon S3 buckets. Useful for compatibility with certain applications and services.")]
+        public bool UsePathStyle { get; set; };
+
+        [Persistent]
+        [HideFromImporter]
+        [Category("Advanced")]
         [DisplayName("Custom service URL")]
         [Description("Specifying a custom service URL will override the region endpoint.")]
         public string CustomServiceUrl { get; set; }
@@ -689,11 +696,18 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         {
             // https://docs.aws.amazon.com/sdk-for-net/v3/developer-guide/net-dg-region-selection.html
             // example service URL is: https://ec2.us-west-new.amazonaws.com
+            var config = new AmazonS3Config();
 
             if (!string.IsNullOrEmpty(this.CustomServiceUrl))
-                return new AmazonS3Config { ServiceURL = this.CustomServiceUrl };
-            else
-                return new AmazonS3Config { RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint) };
+                config.ServiceURL = this.CustomServiceUrl;
+            else if (!string.IsNullOrEmpty(this.RegionEndpoint))
+                config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint);
+
+            // 
+            if (this.UsePathStyle)
+                config.ForcePathStyle = true;
+
+            return config;
         }
 
         private AmazonS3Client CreateClient()
@@ -771,3 +785,4 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         private static partial Regex MultiSlashPatternRegex();
     }
 }
+ 

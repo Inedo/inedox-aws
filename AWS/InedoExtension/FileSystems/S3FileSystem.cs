@@ -82,7 +82,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Category("Advanced")]
         [DisplayName("Enable Path Style for S3")]
         [Description("Activate path-style URLs for accessing Amazon S3 buckets. Useful for compatibility with certain applications and services.")]
-        public bool UsePathStyle { get; set; };
+        public bool UsePathStyle { get; set; }
 
         [Persistent]
         [HideFromImporter]

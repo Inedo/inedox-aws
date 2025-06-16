@@ -88,6 +88,16 @@ namespace Inedo.Extensions.AWS.Operations
         [Description("The size (in bytes) of individual parts for an S3 multipart upload.")]
         public long PartSize { get; set; } = 5L * 1024 * 1024;
 
+        [Category("Advanced")]
+        [DisplayName("Enable Path Style for S3")]
+        [Description("Activate path-style URLs for accessing Amazon S3 buckets. Useful for compatibility with certain applications and services.")]
+        public bool UsePathStyle { get; set; }
+
+        [Category("Advanced")]
+        [DisplayName("Custom service URL")]
+        [Description("Specifying a custom service URL will override the region endpoint.")]
+        public string CustomServiceUrl { get; set; }
+
         private S3CannedACL CannedACL => this.MakePublic ? S3CannedACL.PublicRead : S3CannedACL.NoACL;
         private ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
         private S3StorageClass StorageClass => this.ReducedRedundancy ? S3StorageClass.ReducedRedundancy : S3StorageClass.Standard;
@@ -282,11 +292,24 @@ namespace Inedo.Extensions.AWS.Operations
 
             return parts;
         }
-        private AmazonS3Client CreateClient(AwsSecureCredentials credentials)
+
+        private AmazonS3Client CreateClient(AwsSecureCredentials credentials) => new (credentials.AccessKeyId, AH.Unprotect(credentials.SecretAccessKey), this.CreateS3Config());
+
+        private AmazonS3Config CreateS3Config()
         {
-            return string.IsNullOrWhiteSpace(this.RegionEndpoint)
-                ? new AmazonS3Client(credentials.AccessKeyId, AH.Unprotect(credentials.SecretAccessKey))
-                : new AmazonS3Client(credentials.AccessKeyId, AH.Unprotect(credentials.SecretAccessKey), Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint));
+            // https://docs.aws.amazon.com/sdk-for-net/v3/developer-guide/net-dg-region-selection.html
+            // example service URL is: https://ec2.us-west-new.amazonaws.com
+            var config = new AmazonS3Config();
+            if (!string.IsNullOrEmpty(this.CustomServiceUrl))
+                config.ServiceURL = this.CustomServiceUrl;
+            else if (!string.IsNullOrEmpty(this.RegionEndpoint))
+                config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint);
+
+            // 
+            if (this.UsePathStyle)
+                config.ForcePathStyle = true;
+
+            return config;
         }
 
         private readonly struct PartInfo

@@ -89,11 +89,13 @@ namespace Inedo.Extensions.AWS.Operations
         public long PartSize { get; set; } = 5L * 1024 * 1024;
 
         [Category("Advanced")]
+        [ScriptAlias("UsePathStyle")]
         [DisplayName("Enable Path Style for S3")]
         [Description("Activate path-style URLs for accessing Amazon S3 buckets. Useful for compatibility with certain applications and services.")]
         public bool UsePathStyle { get; set; }
 
         [Category("Advanced")]
+        [ScriptAlias("CustomServiceUrl")]
         [DisplayName("Custom service URL")]
         [Description("Specifying a custom service URL will override the region endpoint.")]
         public string CustomServiceUrl { get; set; }

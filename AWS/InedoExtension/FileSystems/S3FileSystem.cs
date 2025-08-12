@@ -91,6 +91,13 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
         [Description("Specifying a custom service URL will override the region endpoint.")]
         public string CustomServiceUrl { get; set; }
 
+        [Persistent]
+        [HideFromImporter]
+        [Category("Advanced")]
+        [DisplayName("Disable Payload Signing")]
+        [Description("Required by some \"generic\" S3 providers, including CloudFlare R2 and Oracle OCI.")]
+        public bool DisablePayloadSigning { get; set; }
+
         internal S3CannedACL CannedACL => this.MakePublic ? S3CannedACL.PublicRead : S3CannedACL.NoACL;
         internal S3StorageClass StorageClass => S3StorageClass.Standard;
         internal ServerSideEncryptionMethod EncryptionMethod => this.Encrypted ? ServerSideEncryptionMethod.AES256 : ServerSideEncryptionMethod.None;
@@ -670,7 +677,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         InputStream = Stream.Null,
                         CannedACL = this.CannedACL,
                         StorageClass = this.StorageClass,
-                        ServerSideEncryptionMethod = this.EncryptionMethod
+                        ServerSideEncryptionMethod = this.EncryptionMethod,
+                        DisablePayloadSigning = this.DisablePayloadSigning
                     }
                 ).ConfigureAwait(false);
             }

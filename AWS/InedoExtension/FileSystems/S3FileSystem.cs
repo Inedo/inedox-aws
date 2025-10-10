@@ -699,7 +699,11 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
             var config = new AmazonS3Config();
 
             if (!string.IsNullOrEmpty(this.CustomServiceUrl))
+            {
                 config.ServiceURL = this.CustomServiceUrl;
+                if (!string.IsNullOrEmpty(this.RegionEndpoint))
+                    config.AuthenticationRegion = this.RegionEndpoint;
+            }
             else if (!string.IsNullOrEmpty(this.RegionEndpoint))
                 config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(this.RegionEndpoint);
 

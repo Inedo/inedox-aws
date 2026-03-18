@@ -366,7 +366,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                     throw;
                 }
 
-                continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+                continuationToken = response.IsTruncated.GetValueOrDefault() ? response.NextContinuationToken : null;
 
                 if (response.CommonPrefixes != null)
                     seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
@@ -433,9 +433,9 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         cancellationToken
                     ).ConfigureAwait(false);
 
-                    continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+                    continuationToken = response.IsTruncated.GetValueOrDefault() ? response.NextContinuationToken : null;
 
-                    size += response.S3Objects.Sum(o => o.Size);
+                    size += response.S3Objects.Sum(o => o.Size.GetValueOrDefault());
                 }
                 while (continuationToken != null);
             }
@@ -765,14 +765,14 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 this.Name = PathEx.GetFileName(key);
                 this.Size = file.Size;
                 this.IsDirectory = false;
-                this.LastModifyTime = new DateTimeOffset(file.LastModified.ToUniversalTime(), TimeSpan.Zero);
+                this.LastModifyTime = new DateTimeOffset(file.LastModified.GetValueOrDefault().ToUniversalTime(), TimeSpan.Zero);
             }
             public S3FileSystemItem(string name, GetObjectMetadataResponse file)
             {
                 this.Name = name;
                 this.Size = file.ContentLength;
                 this.IsDirectory = false;
-                this.LastModifyTime = new DateTimeOffset(file.LastModified, TimeSpan.Zero);
+                this.LastModifyTime = new DateTimeOffset(file.LastModified.GetValueOrDefault(), TimeSpan.Zero);
             }
 
             public override string Name { get; }

@@ -8,9 +8,9 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="4.0.19" />
-    <PackageReference Include="AWSSDK.SecurityToken" Version="4.0.5.12" />
-    <PackageReference Include="Inedo.SDK" Version="4.0.0-ci.7">
+    <PackageReference Include="AWSSDK.S3" Version="4.0.23" />
+    <PackageReference Include="AWSSDK.SecurityToken" Version="4.0.6.3" />
+    <PackageReference Include="Inedo.SDK" Version="4.0.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

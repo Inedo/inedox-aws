@@ -315,7 +315,7 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                         cancellationToken
                     ).ConfigureAwait(false);
 
-                    if (!files.S3Objects.Any())
+                    if ((files.S3Objects?.Count ?? 0) == 0)
                         break;
 
                     await client.DeleteObjectsAsync(
@@ -371,20 +371,24 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
                 if (response.CommonPrefixes != null)
                     seenDirectory.UnionWith(response.CommonPrefixes.Select(parseCommonPrefix));
 
-                foreach (var file in response.S3Objects)
+
+                if (response.S3Objects is not null)
                 {
-                    var key = OriginalPath(file.Key[prefix.Length..]);
-                    if (!string.IsNullOrEmpty(key))
+                    foreach (var file in response.S3Objects)
                     {
-                        int slash = key.IndexOf('/');
-                        if (slash != -1)
+                        var key = OriginalPath(file.Key[prefix.Length..]);
+                        if (!string.IsNullOrEmpty(key))
                         {
-                            var dir = key[..slash];
-                            seenDirectory.Add(dir);
-                        }
-                        else
-                        {
-                            yield return new S3FileSystemItem(file, key);
+                            int slash = key.IndexOf('/');
+                            if (slash != -1)
+                            {
+                                var dir = key[..slash];
+                                seenDirectory.Add(dir);
+                            }
+                            else
+                            {
+                                yield return new S3FileSystemItem(file, key);
+                            }
                         }
                     }
                 }
@@ -435,7 +439,8 @@ namespace Inedo.ProGet.Extensions.AWS.PackageStores
 
                     continuationToken = response.IsTruncated.GetValueOrDefault() ? response.NextContinuationToken : null;
 
-                    size += response.S3Objects.Sum(o => o.Size.GetValueOrDefault());
+                    if (response.S3Objects is not null)
+                        size += response.S3Objects.Sum(o => o.Size.GetValueOrDefault());
                 }
                 while (continuationToken != null);
             }
